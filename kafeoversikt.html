@@ -5374,6 +5374,15 @@ function getInnsiktRange() {
   if (p.mode === 'thisYear') {
     return { dateFrom: `${now.getFullYear()}-01-01`, dateTo: today(), label: `${now.getFullYear()}`, chartMode: 'monthly' };
   }
+  if (p.mode === 'schoolYear' && p.value) {
+    const sy = parseInt(p.value);
+    return {
+      dateFrom: `${sy}-08-01`,
+      dateTo:   `${sy+1}-06-30`,
+      label:    `Skoleår ${String(sy).slice(2)}/${String(sy+1).slice(2)}`,
+      chartMode: 'monthly'
+    };
+  }
   if (p.mode === 'all') {
     return { dateFrom: null, dateTo: null, label: 'Totalt (all tid)', chartMode: 'monthly' };
   }
@@ -5458,6 +5467,8 @@ async function buildInnsikt() {
   };
   const nowY = new Date().getFullYear();
   const nowM = `${nowY}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  // Current school year start: Aug–Jun, so if before August we're still in the previous year's school year
+  const curSY = new Date().getMonth() >= 7 ? nowY : nowY - 1;
 
   // Compute current ISO week value for the week picker default (format: YYYY-Www)
   const _isoWeekVal = (() => {
@@ -5479,6 +5490,10 @@ async function buildInnsikt() {
       ${modeBtn('lastMonth','Forrige måned')}
       ${modeBtn('thisYear',String(nowY))}
       ${modeBtn('all','Totalt')}
+      <span style="color:var(--border2);margin:0 4px">|</span>
+      <span style="font-weight:600;color:var(--text2);font-size:0.82rem">Skoleår:</span>
+      ${modeBtn('schoolYear',`${String(curSY).slice(2)}/${String(curSY+1).slice(2)}`,String(curSY))}
+      ${modeBtn('schoolYear',`${String(curSY-1).slice(2)}/${String(curSY).slice(2)}`,String(curSY-1))}
       <span style="color:var(--border2);margin:0 4px">|</span>
       <input type="week" value="${_isoWeekVal}" lang="nb-NO" style="font-size:0.82rem;padding:4px 8px;width:165px;${period.mode==='week'?'outline:2px solid var(--accent);border-radius:4px':''}"
         title="Velg en bestemt uke"
