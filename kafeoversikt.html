@@ -450,6 +450,10 @@ tr.unmatched td { background: #fff8e6; }
 const SUPABASE_URL  = 'https://kvtugiflpxehytpplkqw.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
 
+// Hardcoded (not derived from location.*) so the QR/link is always correct
+// even when this page is opened locally instead of from GitHub Pages.
+const LOYALTY_SELFSERVE_URL = 'https://vvoapp.github.io/cafe-smia/min-kode.html';
+
 // Pre-computed SHA-256 hashes (lowercase hex)
 const HASH_STAFF = 'c8c0b68b66895b8ff901f6eef02a6ab128a60fa5111041f5ad4c566797c152d4';
 const HASH_ADMIN = '032db610b100d8352675f993735234479b396363fbc0f64eaa39d14dea08675d';
@@ -7493,9 +7497,12 @@ async function buildLojalitet() {
     <p style="font-size:12.5px;color:var(--text2);margin-bottom:10px">
       Alternativt kan kunder generere sin egen kode på telefonen — heng gjerne opp denne lenken/QR-koden ved disken:
     </p>
-    <div class="row" style="gap:10px">
+    <div class="row" style="gap:10px;align-items:center">
       <div id="lr-selfserve-qr" style="background:white;padding:8px;border-radius:8px;display:inline-block"></div>
-      <code style="font-size:12px;word-break:break-all">${location.origin}${location.pathname.replace(/[^/]*$/, '')}min-kode.html</code>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <code style="font-size:12px;word-break:break-all">${LOYALTY_SELFSERVE_URL}</code>
+        <button class="btn btn-secondary btn-sm" onclick="printSelfServePoster()">🖨️ Skriv ut plakat</button>
+      </div>
     </div>
   </div>
   ${buildLrModal()}`;
@@ -7617,8 +7624,37 @@ function renderLoyaltySelfServeQr() {
   const box = document.getElementById('lr-selfserve-qr');
   if (!box || typeof QRCode === 'undefined') return;
   box.innerHTML = '';
-  const url = location.origin + location.pathname.replace(/[^/]*$/, '') + 'min-kode.html';
-  new QRCode(box, { text: url, width: 90, height: 90, correctLevel: QRCode.CorrectLevel.M });
+  new QRCode(box, { text: LOYALTY_SELFSERVE_URL, width: 90, height: 90, correctLevel: QRCode.CorrectLevel.M });
+}
+
+function printSelfServePoster() {
+  const win = window.open('', '_blank');
+  if (!win) { showAlert('Nettleseren blokkerte utskriftsvinduet — tillat popup-vinduer for denne siden og prøv igjen.', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>Lojalitetskode — Smia Café</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></` + `script>
+    <style>
+      body{font-family:Arial,sans-serif;margin:0;padding:60px 40px;text-align:center;color:#1a1a18}
+      .logo{font-size:48px;margin-bottom:8px}
+      h1{font-size:28px;margin:0 0 10px}
+      p{font-size:16px;color:#555;margin:0 0 30px}
+      .qr{display:flex;justify-content:center;margin-bottom:20px}
+      .tip{font-size:13px;color:#888;margin-top:24px}
+      @media print { body{padding:30px} }
+    </style></head><body>
+    <div class="logo">☕</div>
+    <h1>Bli med i lojalitetsklubben!</h1>
+    <p>Skann koden med telefonen for å få din egen<br>anonyme lojalitetskode — ingen registrering nødvendig.</p>
+    <div class="qr" id="poster-qr"></div>
+    <p class="tip">${esc(LOYALTY_SELFSERVE_URL)}</p>
+    <script>
+      new QRCode(document.getElementById('poster-qr'), {
+        text: ${JSON.stringify(LOYALTY_SELFSERVE_URL)},
+        width: 320, height: 320, correctLevel: QRCode.CorrectLevel.M
+      });
+      window.addEventListener('load', () => setTimeout(() => window.print(), 300));
+    <\/script>
+    </body></html>`);
+  win.document.close();
 }
 
 async function saveManualStockItem(id) {
