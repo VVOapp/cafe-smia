@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="nb-NO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Min lojalitetskode — Smia Café</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #ffffff; --bg2: #f5f3f0; --text: #1a1a18; --text2: #6b6a66; --text3: #a09f9b;
+  --border: rgba(0,0,0,0.1); --radius: 14px; --accent: #6F4E37; --accent-light: #f5ede8;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#1c1c1a; --bg2:#252523; --text:#f0efe9; --text2:#9e9d99; --text3:#6b6a66; --border:rgba(255,255,255,0.1); --accent-light:#2e2118; }
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; line-height: 1.5; }
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem 1.5rem; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+.logo { font-size: 2.2rem; margin-bottom: 4px; }
+h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.sub { font-size: 13px; color: var(--text3); margin-bottom: 1.25rem; }
+#qr-box { display: inline-block; padding: 14px; background: white; border-radius: 10px; margin-bottom: 1.25rem; }
+.tip { font-size: 12.5px; color: var(--text2); background: var(--accent-light); border-radius: 8px; padding: 10px 12px; text-align: left; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">☕</div>
+  <h1>Din lojalitetskode</h1>
+  <p class="sub">Vis denne koden i kassen når du bestiller</p>
+  <div id="qr-box"></div>
+  <div class="tip">💡 Ta et skjermbilde av koden, så har du den lett tilgjengelig neste gang. Ingen registrering — koden er anonym.</div>
+</div>
+<script>
+// Anonymous loyalty token — persisted locally on this device so returning
+// to this page always shows the SAME code (never overwrite an existing one).
+function uuid() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+let code = localStorage.getItem('smia_loyalty_id');
+if (!code) {
+  code = uuid();
+  localStorage.setItem('smia_loyalty_id', code);
+}
+new QRCode(document.getElementById('qr-box'), {
+  text: code,
+  width: 220,
+  height: 220,
+  correctLevel: QRCode.CorrectLevel.M
+});
+</script>
+</body>
+</html>

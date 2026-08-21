@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<!--
+=============================================================
+  SMIA CAFÉ — LOJALITETSSKANNER
+  SQL setup for this page's tables: see loyalty-setup.sql
+  (or the comment block at the bottom of this file)
+=============================================================
+-->
+<html lang="nb-NO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Lojalitet — Smia Café</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #ffffff; --bg2: #f5f3f0; --bg3: #edeae6;
+  --text: #1a1a18; --text2: #6b6a66; --text3: #a09f9b;
+  --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18);
+  --radius: 10px; --radius-sm: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.07);
+  --accent: #6F4E37; --accent-light: #f5ede8; --accent-border: #c9a48a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1a; --bg2: #252523; --bg3: #2e2e2b;
+    --text: #f0efe9; --text2: #9e9d99; --text3: #6b6a66;
+    --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+    --accent-light: #2e2118; --accent-border: #7a5c44;
+  }
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); font-size: 15px; line-height: 1.5; min-height: 100vh; }
+#app, #login-screen .login-card { max-width: 480px; margin: 0 auto; }
+#app { padding: 1rem; }
+
+#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; }
+.login-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 100%; max-width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+.login-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--accent); }
+.login-card p { font-size: 13px; color: var(--text3); margin-bottom: 1.5rem; }
+
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; }
+.logo { width: 36px; height: 36px; background: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white; font-size: 18px; }
+header h1 { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; }
+header p { font-size: 12px; color: var(--text3); }
+
+.card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+.empty { text-align: center; color: var(--text3); font-size: 13px; padding: 1.5rem 0; }
+
+.btn { padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg); cursor: pointer; font-size: 15px; font-weight: 600; color: var(--text); width: 100%; }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--accent); color: white; border-color: transparent; }
+.btn-sm { padding: 8px 12px; font-size: 13px; width: auto; }
+.btn-danger { color: #A32D2D; border-color: #F09595; }
+.btn-green { background: #3B6D11; color: white; border-color: transparent; }
+.btn-secondary { color: #4a6080; border-color: #b0c0d8; background: #f0f4f8; }
+
+input, select { background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 15px; color: var(--text); width: 100%; font-family: inherit; outline: none; }
+
+.alert { font-size: 13px; padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 1rem; font-weight: 500; }
+.alert-success { background: #EAF3DE; color: #3B6D11; border: 1px solid #C0DD97; }
+.alert-error   { background: #FCEBEB; color: #A32D2D; border: 1px solid #F09595; }
+.alert-info    { background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-border); }
+
+#scan-wrap { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; margin-bottom: 1rem; }
+#scan-video { width: 100%; display: block; max-height: 60vh; object-fit: cover; }
+#scan-frame { position: absolute; inset: 12%; border: 3px solid rgba(255,255,255,0.85); border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 999px rgba(0,0,0,0.35); }
+
+.product-name { font-size: 15px; font-weight: 700; }
+.dots { font-size: 20px; letter-spacing: 3px; margin: 6px 0; line-height: 1; }
+.dot-filled { color: var(--accent); }
+.dot-empty { color: var(--border2); }
+.progress-label { font-size: 12px; color: var(--text2); font-weight: 600; margin-bottom: 8px; }
+.reward-banner { background: linear-gradient(135deg,#3B6D11,#5a9e1f); color: white; border-radius: var(--radius-sm); padding: 10px 12px; font-weight: 700; font-size: 14px; margin: 8px 0; text-align: center; }
+.customer-chip { font-size: 11px; color: var(--text3); font-family: monospace; word-break: break-all; }
+
+@media (max-width: 480px) {
+  header h1 { font-size: 16px; }
+  .card { padding: 1rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <h1>🎁 Smia</h1>
+    <p>Lojalitetsskanner — logg inn for å fortsette</p>
+    <form id="login-form" onsubmit="doLogin();return false;" autocomplete="on">
+      <input type="text" name="username" autocomplete="username" value="loyalty" style="display:none" aria-hidden="true">
+      <div style="margin-bottom:12px">
+        <input type="password" id="pw-input" name="password" autocomplete="current-password" placeholder="Skriv inn passord...">
+      </div>
+      <div id="login-error" class="alert alert-error" style="display:none"></div>
+      <button type="submit" class="btn btn-primary">Logg inn</button>
+    </form>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="logo">🎁</div>
+    <div style="flex:1">
+      <h1>Lojalitet</h1>
+      <p>Skann kundens kode</p>
+    </div>
+    <button class="btn btn-sm" onclick="doLogout()">Logg ut</button>
+  </header>
+
+  <div id="alert-area"></div>
+  <div id="main"></div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://kvtugiflpxehytpplkqw.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
+
+// Same pre-computed SHA-256 hashes as kafeoversikt.html — either role can scan.
+const HASH_STAFF = 'c8c0b68b66895b8ff901f6eef02a6ab128a60fa5111041f5ad4c566797c152d4';
+const HASH_ADMIN = '032db610b100d8352675f993735234479b396363fbc0f64eaa39d14dea08675d';
+
+const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false };
+
+async function sha256hex(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  if (!pw) return;
+  const h = await sha256hex(pw);
+  const err = document.getElementById('login-error');
+  if (h === HASH_ADMIN || h === HASH_STAFF) {
+    localStorage.setItem('smia_role', h === HASH_ADMIN ? 'admin' : 'staff');
+    startApp();
+  } else {
+    err.style.display = '';
+    err.textContent = 'Feil passord. Prøv igjen.';
+    document.getElementById('pw-input').value = '';
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('smia_role');
+  location.reload();
+}
+
+async function sbFetch(path, options = {}) {
+  const url = SUPABASE_URL + '/rest/v1/' + path;
+  const headers = {
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': options.prefer || 'return=representation',
+    ...(options.headers || {})
+  };
+  const res = await fetch(url, { method: options.method || 'GET', headers, body: options.body ? JSON.stringify(options.body) : undefined });
+  if (!res.ok) { const txt = await res.text(); throw new Error(txt || res.statusText); }
+  if (res.status === 204) return [];
+  const ct = res.headers.get('content-type') || '';
+  return ct.includes('json') ? res.json() : [];
+}
+const sbGet    = (path) => sbFetch(path);
+const sbPost   = (table, body) => sbFetch(table, { method: 'POST', body });
+const sbPatch  = (path, body) => sbFetch(path, { method: 'PATCH', body });
+
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function el(id) { return document.getElementById(id); }
+function showAlert(msg, type = 'success') {
+  const a = el('alert-area');
+  if (!a) return;
+  a.innerHTML = `<div class="alert alert-${type}">${esc(msg)}</div>`;
+  setTimeout(() => { if (a) a.innerHTML = ''; }, type === 'error' ? 8000 : 3500);
+}
+
+// =============================================================
+//  APP INIT
+// =============================================================
+async function startApp() {
+  el('login-screen').style.display = 'none';
+  el('app').style.display = '';
+  try {
+    const [rules, products] = await Promise.all([
+      sbGet('loyalty_rules?active=eq.true&select=*'),
+      sbGet('cafe_products?select=id,name')
+    ]);
+    const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+    ST.rules = rules.map(r => ({ ...r, productName: nameById[r.cafe_product_id] || 'Ukjent produkt' }));
+  } catch(e) {
+    showAlert('Kunne ikke laste lojalitetsregler: ' + e.message, 'error');
+    ST.rules = [];
+  }
+  renderMain();
+}
+
+function renderMain() {
+  const m = el('main');
+  if (!ST.customerId) {
+    m.innerHTML = `
+      <div class="card" style="text-align:center">
+        ${ST.rules.length === 0 ? `<div class="empty">Ingen aktive lojalitetsregler ennå.<br>Sett dem opp i Kafeoversikt → Lojalitet.</div>` : `
+        <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Be kunden vise koden sin, og trykk skann.</p>
+        <button class="btn btn-primary" onclick="startScan()">📷 Skann kundekode</button>
+        <div style="margin-top:14px">
+          <a href="#" onclick="showManualEntry();return false;" style="font-size:12.5px;color:var(--text3)">Skriv inn kode manuelt</a>
+        </div>
+        <div id="manual-entry" style="display:none;margin-top:12px;text-align:left">
+          <input id="manual-code" placeholder="Lim inn / skriv kode">
+          <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px" onclick="submitManualEntry()">Slå opp</button>
+        </div>`}
+      </div>`;
+    return;
+  }
+  m.innerHTML = `
+    <div class="card">
+      <div class="customer-chip">Kunde: ${esc(ST.customerId)}</div>
+    </div>
+    ${ST.rules.map(r => renderRuleCard(r)).join('')}
+    <button class="btn" onclick="resetScan()">↺ Skann neste kunde</button>
+  `;
+}
+
+function renderRuleCard(rule) {
+  const count = ST.stamps.filter(s => s.rule_id === rule.id).length;
+  const need = rule.stamps_required;
+  const ready = count >= need;
+  let dots = '';
+  for (let i = 0; i < need; i++) dots += `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">●</span>`;
+  return `
+  <div class="card">
+    <div class="product-name">${esc(rule.productName)}</div>
+    <div class="progress-label">${Math.min(count,need)} / ${need} stempler</div>
+    <div class="dots">${dots}</div>
+    ${ready ? `
+      <div class="reward-banner">🎉 Gratis ${esc(rule.productName)}!</div>
+      <button class="btn btn-green" onclick="redeem(${rule.id})">✔ Løs inn og nullstill</button>
+    ` : `
+      <button class="btn btn-primary" onclick="addStamp(${rule.id})">+1 stempel</button>
+    `}
+  </div>`;
+}
+
+function showManualEntry() {
+  el('manual-entry').style.display = 'block';
+  el('manual-code')?.focus();
+}
+function submitManualEntry() {
+  const v = el('manual-code')?.value?.trim();
+  if (!v) return;
+  onCodeScanned(v);
+}
+
+// =============================================================
+//  CUSTOMER LOOKUP
+// =============================================================
+async function onCodeScanned(token) {
+  stopScan();
+  if (!token) return;
+  try {
+    let rows = await sbGet(`loyalty_customers?id=eq.${encodeURIComponent(token)}&select=id`);
+    if (rows.length === 0) {
+      rows = await sbPost('loyalty_customers', [{ id: token }]);
+      showAlert('Ny lojalitetskunde registrert 🎉');
+    }
+    ST.customerId = token;
+    await loadStamps();
+    if (navigator.vibrate) navigator.vibrate(80);
+  } catch(e) {
+    showAlert('Feil ved oppslag: ' + e.message, 'error');
+  }
+  renderMain();
+}
+
+async function loadStamps() {
+  try {
+    ST.stamps = await sbGet(`loyalty_stamps?customer_id=eq.${encodeURIComponent(ST.customerId)}&redeemed_at=is.null&select=id,rule_id`);
+  } catch(e) {
+    ST.stamps = [];
+    showAlert('Kunne ikke laste stempler: ' + e.message, 'error');
+  }
+}
+
+async function addStamp(ruleId) {
+  try {
+    await sbPost('loyalty_stamps', [{ customer_id: ST.customerId, rule_id: ruleId }]);
+    await loadStamps();
+    renderMain();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+}
+
+async function redeem(ruleId) {
+  const rule = ST.rules.find(r => r.id === ruleId);
+  if (!confirm(`Løse inn gratis ${rule?.productName || 'premie'}?`)) return;
+  try {
+    await sbPatch(`loyalty_stamps?customer_id=eq.${encodeURIComponent(ST.customerId)}&rule_id=eq.${ruleId}&redeemed_at=is.null`,
+      { redeemed_at: new Date().toISOString() });
+    showAlert('Premie løst inn! 🎉');
+    await loadStamps();
+    renderMain();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+}
+
+function resetScan() {
+  ST.customerId = null;
+  ST.stamps = [];
+  renderMain();
+}
+
+// =============================================================
+//  CAMERA / QR SCANNING
+// =============================================================
+async function startScan() {
+  const m = el('main');
+  m.innerHTML = `
+    <div id="scan-wrap">
+      <video id="scan-video" playsinline muted autoplay></video>
+      <div id="scan-frame"></div>
+    </div>
+    <button class="btn" onclick="stopScan();renderMain()">Avbryt</button>
+  `;
+  try {
+    ST.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+  } catch(e) {
+    showAlert('Fikk ikke tilgang til kamera: ' + e.message, 'error');
+    renderMain();
+    return;
+  }
+  const video = el('scan-video');
+  video.srcObject = ST.stream;
+  await video.play();
+  ST.scanning = true;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const tick = () => {
+    if (!ST.scanning) return;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = window.jsQR && jsQR(imgData.data, imgData.width, imgData.height);
+      if (code && code.data) { onCodeScanned(code.data.trim()); return; }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function stopScan() {
+  ST.scanning = false;
+  if (ST.stream) { ST.stream.getTracks().forEach(t => t.stop()); ST.stream = null; }
+}
+
+// =============================================================
+//  BOOT
+// =============================================================
+const savedRole = localStorage.getItem('smia_role');
+if (savedRole === 'admin' || savedRole === 'staff') {
+  startApp();
+}
+</script>
+</body>
+</html>
