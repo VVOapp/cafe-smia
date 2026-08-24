@@ -7584,9 +7584,9 @@ function printThermosStickers() {
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></` + `script>
     <style>
       body{font-family:Arial,sans-serif;margin:0;padding:16px}
-      .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-      .sticker{border:1px dashed #999;border-radius:50%;padding:8px;text-align:center;page-break-inside:avoid;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
-      .sticker p{font-size:8px;color:#666;margin:4px 0 0}
+      .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+      .sticker{border:1px dashed #999;border-radius:4px;padding:5px;text-align:center;page-break-inside:avoid;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+      .sticker p{font-size:7px;color:#666;margin:3px 0 0}
       @media print { body{padding:0} }
     </style></head><body>
     <div class="grid" id="grid"></div>
@@ -7602,7 +7602,10 @@ function printThermosStickers() {
       window.addEventListener('load', () => {
         for (let i = 0; i < ${count}; i++) {
           const token = (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+i+'-'+Math.random().toString(16).slice(2)));
-          new QRCode(document.getElementById('s'+i), { text: token, width: 70, height: 70, correctLevel: QRCode.CorrectLevel.M });
+          // Small square (not round) so it fits near the top of the cup wall,
+          // under the lid — and a high error-correction level since it'll be
+          // exposed to coffee smudges and wear over time.
+          new QRCode(document.getElementById('s'+i), { text: token, width: 60, height: 60, correctLevel: QRCode.CorrectLevel.H });
           fetch('${SUPABASE_URL}/rest/v1/thermos_cups', {
             method: 'POST',
             headers: { 'apikey': '${SUPABASE_KEY}', 'Authorization': 'Bearer ${SUPABASE_KEY}', 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
