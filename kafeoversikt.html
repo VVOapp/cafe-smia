@@ -7850,7 +7850,7 @@ function getQuizState() {
     ST._quiz = {
       weekLabel: quizWeekLabel(d),
       dateLabel: quizDateLabel(d),
-      greeting: 'God morgen og velkommen innom! ☕ Denne uken har vi en sudoku og et lite ordspill til deg — finn løsningsordet nederst, lever lappen i boksen ved disken innen torsdag, så er du med i trekningen. Ta deg god tid, en kaffekopp til varer lenge.',
+      greeting: 'God morgen og velkommen innom! ☕ Ukens quiz har to deler: løs sudokuen og finn løsningsordet i ordspillet under. Begge deler må være fylt ut for å bli med i trekningen — lever hele arket i boksen ved disken innen torsdag. Ta deg god tid, en kaffekopp til varer lenge.',
       codeword: 'VAFFEL',
       clues: [
         { clue: 'Kaffen bør helst være …', answer: 'VARM' },
@@ -7976,7 +7976,7 @@ function buildUkensQuizTab() {
     <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px">
       Skriv inn løsningsordet og en ledetekst + svar for hver bokstav. Svaret må inneholde bokstaven
       det er sin tur til — appen viser deg om det stemmer mens du skriver. Trykk «Skriv ut» for et
-      ferdig A4-ark med sudoku, ordspill og en svarlapp kundene kan levere ved disken.
+      ferdig A4-ark med sudoku, ordspill og et svarfelt nederst — kundene leverer hele arket ved disken.
       Anbefaler et løsningsord på <strong>4–8 bokstaver</strong> så alt får plass på én side.
     </p>
 
@@ -8189,8 +8189,7 @@ function printUkensQuiz() {
     .codeword-box .slots { display:flex; gap:.45rem; font-family:"JetBrains Mono",monospace; margin-bottom:.6rem; }
     .codeword-box .slot { width:1.7rem; height:1.85rem; border-bottom:2.5px solid var(--mustard-deep); position:relative; }
     .codeword-box .slot::after { content:attr(data-n); position:absolute; left:50%; bottom:-1.15rem; transform:translateX(-50%); font-size:.62rem; font-weight:700; color:var(--mustard-deep); }
-    .tear { margin:1.2rem 0 0; border:none; border-top:2px dashed var(--rule); position:relative; }
-    .tear::before { content:"✂ klipp her"; position:absolute; left:2rem; top:-.65rem; background:var(--paper-raised); padding:0 .5rem; font-size:.72rem; color:var(--ink-soft); letter-spacing:.06em; }
+    .tear { margin:1.2rem 0 0; border:none; border-top:2px solid var(--rule); }
     .slip { padding:1rem 1.6rem 1.3rem; display:grid; grid-template-columns:1.3fr 1fr; gap:1.2rem; }
     .slip h2 { font-family:"Fraunces",Georgia,serif; font-size:1.02rem; margin:0 0 .4rem; color:var(--teal-deep); }
     .slip .field { margin-bottom:.55rem; }
@@ -8226,11 +8225,11 @@ function printUkensQuiz() {
     <hr class="tear">
     <div class="slip">
       <div>
-        <h2>Svarlapp — lever ved disken</h2>
+        <h2>Svar — lever hele arket ved disken</h2>
         <div class="field"><label>Navn</label><div class="fill-line"></div></div>
         <div class="field"><label>Løsningsord</label><div class="fill-line"></div></div>
       </div>
-      <p class="prize-note">Alle riktige svar er med i trekningen hver <strong>${esc(q.drawWhen)}</strong>. Vinneren får <strong>${esc(q.prize)}</strong> — og navnet henger på tavla neste uke.</p>
+      <p class="prize-note">Alle som har løst <strong>både sudokuen og løsningsordet</strong> er med i trekningen hver <strong>${esc(q.drawWhen)}</strong>. Vinneren får <strong>${esc(q.prize)}</strong> — og navnet henger på tavla neste uke.</p>
     </div>
     <p class="colophon">Kafé Smia · Ukens Quiz lages med kjærlighet hver uke</p>
   </div>
