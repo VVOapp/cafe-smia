@@ -624,6 +624,7 @@ function getTabs(role) {
     { id: 'daglig',     label: '📋 Daglig' },
     { id: 'bestilling', label: '📑 Bestilling' },
     { id: 'lager',      label: '📦 Lager' },
+    { id: 'lojalitet',  label: '🎁 Lojalitet' }, // ansatte ser kun fasiten for ukens quiz her, ikke lojalitetsprogrammet
   ];
 }
 
@@ -7437,6 +7438,22 @@ function buildManualStockEditModal() {
 //  TAB: LOJALITET (kundeklubb — "kjøp N, få den neste gratis")
 // =============================================================
 async function buildLojalitet() {
+  await ensureQuizLoaded();
+  // Ansatte har ikke tilgang til lojalitetsprogrammet (regler/kort) — kun fasiten for ukens quiz,
+  // slik at de kan sjekke svarlapper i disken i rolige stunder.
+  if (ST.role !== 'admin') return buildUkensQuizTab();
+
+  const subTab = ST.subTab.lojalitet || 'program';
+  const nav = `
+  <div class="sub-nav">
+    <button class="${subTab==='program'?'active':''}" onclick="ST.subTab.lojalitet='program';renderTab()">🎁 Lojalitetsprogram</button>
+    <button class="${subTab==='quiz'?'active':''}"    onclick="ST.subTab.lojalitet='quiz';renderTab()">🧩 Ukens quiz</button>
+  </div>`;
+  const content = subTab === 'quiz' ? buildUkensQuizTab() : await buildLojalitetProgram();
+  return nav + content;
+}
+
+async function buildLojalitetProgram() {
   let rules = [];
   try {
     rules = await sbGet('loyalty_rules?select=*&order=id');
@@ -7765,6 +7782,460 @@ function printSelfServePoster() {
       window.addEventListener('load', () => setTimeout(() => window.print(), 300));
     <\/script>
     </body></html>`);
+  win.document.close();
+}
+
+// =============================================================
+//  LOJALITET → UKENS QUIZ (sudoku + ordspill med løsningsord)
+// =============================================================
+// Loads the saved weekly quiz from Supabase once per session (so staff on another
+// device see whatever the admin last saved). Falls back to the built-in example
+// if no row exists yet, or the quiz-setup.sql table hasn't been created.
+async function ensureQuizLoaded() {
+  if (ST._quizLoaded) return;
+  ST._quizLoaded = true;
+  try {
+    const rows = await sbGet('weekly_quiz?slug=eq.current&select=*&limit=1');
+    const r = rows && rows[0];
+    if (r) {
+      ST._quiz = {
+        weekLabel: r.week_label || quizWeekLabel(new Date()),
+        dateLabel: r.date_label || quizDateLabel(new Date()),
+        greeting:  r.greeting || '',
+        codeword:  r.codeword || '',
+        clues:     Array.isArray(r.clues) && r.clues.length ? r.clues : [{ clue: '', answer: '' }],
+        drawWhen:  r.draw_when || 'torsdag kl. 14',
+        prize:     r.prize || 'kaffe og vaffel',
+        sudoku:    (r.sudoku_puzzle && r.sudoku_solution) ? { puzzle: r.sudoku_puzzle, solution: r.sudoku_solution } : generateSudoku6(),
+      };
+    }
+    // else: ingen lagret rad ennå — getQuizState() seeder eksempelet under
+  } catch(e) {
+    ST._quizLoadError = e.message; // sannsynligvis mangler weekly_quiz-tabellen ennå
+  }
+}
+
+async function saveWeeklyQuiz(showSuccessAlert = true) {
+  const q = getQuizState();
+  try {
+    await sbFetch('weekly_quiz?on_conflict=slug', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: [{
+        slug: 'current',
+        week_label: q.weekLabel,
+        date_label: q.dateLabel,
+        greeting: q.greeting,
+        codeword: q.codeword,
+        clues: q.clues,
+        draw_when: q.drawWhen,
+        prize: q.prize,
+        sudoku_puzzle: q.sudoku.puzzle,
+        sudoku_solution: q.sudoku.solution,
+        updated_at: new Date().toISOString(),
+      }],
+    });
+    ST._quizLoadError = null;
+    if (showSuccessAlert) showAlert('Ukens quiz lagret — synlig for ansatte i disken.');
+    return true;
+  } catch(e) {
+    showAlert('Kunne ikke lagre ukens quiz: ' + e.message + ' — har du kjørt SQL-oppsettet i Supabase? Se quiz-setup.sql.', 'error');
+    return false;
+  }
+}
+
+function getQuizState() {
+  if (!ST._quiz) {
+    const d = new Date();
+    ST._quiz = {
+      weekLabel: quizWeekLabel(d),
+      dateLabel: quizDateLabel(d),
+      greeting: 'God morgen og velkommen innom! ☕ Denne uken har vi en sudoku og et lite ordspill til deg — finn løsningsordet nederst, lever lappen i boksen ved disken innen torsdag, så er du med i trekningen. Ta deg god tid, en kaffekopp til varer lenge.',
+      codeword: 'VAFFEL',
+      clues: [
+        { clue: 'Kaffen bør helst være …', answer: 'VARM' },
+        { clue: 'Søtt bakverk, ofte servert til kaffen', answer: 'KAKE' },
+        { clue: 'Det du drikker mens du venter på bestillingen', answer: 'KAFFE' },
+        { clue: 'Søt drikke, populær blant både barn og voksne', answer: 'SAFT' },
+        { clue: 'Hvitt og luftig, gjerne på toppen av kaken', answer: 'KREM' },
+        { clue: 'Det motsatte av søtt, finnes i brødskiva', answer: 'SALT' },
+      ],
+      drawWhen: 'torsdag kl. 14',
+      prize: 'kaffe og vaffel',
+      sudoku: generateSudoku6(),
+    };
+  }
+  return ST._quiz;
+}
+
+function quizWeekLabel(d) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((date - yearStart) / 86400000 + 1) / 7);
+  return `Uke ${week} · ${date.getUTCFullYear()}`;
+}
+
+function quizDateLabel(d) {
+  const MND = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des'];
+  const day = d.getDay();
+  const diffToMonday = (day === 0 ? -6 : 1 - day);
+  const mon = new Date(d); mon.setDate(d.getDate() + diffToMonday);
+  const thu = new Date(mon); thu.setDate(mon.getDate() + 3);
+  const range = mon.getMonth() === thu.getMonth()
+    ? `${mon.getDate()}.–${thu.getDate()}. ${MND[mon.getMonth()]}`
+    : `${mon.getDate()}. ${MND[mon.getMonth()]} – ${thu.getDate()}. ${MND[thu.getMonth()]}`;
+  return `${range} · man–tor`;
+}
+
+function shuffleQuiz(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Builds a fresh, always-valid 6x6 sudoku by relabeling digits and shuffling
+// row/column bands of a known-solved grid (2x3 boxes), then blanking 12 cells.
+function generateSudoku6() {
+  const base = [
+    [1,2,3,4,5,6],
+    [4,5,6,1,2,3],
+    [2,3,1,6,4,5],
+    [5,6,4,3,1,2],
+    [3,1,2,5,6,4],
+    [6,4,5,2,3,1],
+  ];
+  const digitMap = shuffleQuiz([1,2,3,4,5,6]);
+  const rowOrder = [];
+  shuffleQuiz([0,1,2]).forEach(b => rowOrder.push(...shuffleQuiz([b*2, b*2+1])));
+  const colOrder = [];
+  shuffleQuiz([0,1]).forEach(b => colOrder.push(...shuffleQuiz([b*3, b*3+1, b*3+2])));
+  const solved = rowOrder.map(r => colOrder.map(c => digitMap[base[r][c]-1]));
+
+  const positions = [];
+  for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) positions.push(r*6+c);
+  const blanks = new Set(shuffleQuiz(positions).slice(0, 12));
+
+  const puzzle = solved.map((row, r) => row.map((v, c) => blanks.has(r*6+c) ? null : v));
+  return { puzzle, solution: solved };
+}
+
+function quizLetterIndex(answer, letter) {
+  if (!answer || !letter) return -1;
+  return String(answer).toUpperCase().indexOf(String(letter).toUpperCase());
+}
+
+function quizHintHtml(answer, letter) {
+  if (!letter) return '';
+  const pos = quizLetterIndex(answer, letter);
+  return pos >= 0
+    ? `<span style="color:#2f8a4b;font-weight:600">✅ «${esc(letter)}» finnes, plass ${pos+1}</span>`
+    : `<span style="color:#c0392b;font-weight:600">⚠️ svaret må inneholde «${esc(letter)}»</span>`;
+}
+
+function buildUkensQuizTab() {
+  const q = getQuizState();
+  const isAdmin = ST.role === 'admin';
+  const fasit = buildQuizFasitCard(q);
+
+  if (!isAdmin) {
+    // Ansatte: kun fasiten, ingen redigering eller utskrift (POS-terminalene har ikke skrivertilgang).
+    return fasit;
+  }
+
+  const cw = (q.codeword || '').toUpperCase();
+
+  const clueRows = q.clues.map((row, i) => {
+    const letter = cw[i] || '';
+    return `
+    <div class="row" style="align-items:flex-start;gap:10px;margin-bottom:10px">
+      <div style="flex:0 0 24px;text-align:center;font-weight:700;color:var(--text2);padding-top:9px;font-size:12.5px">${i+1}</div>
+      <div style="flex:1">
+        <input type="text" placeholder="Ledetekst (spørsmål/hint)" value="${esc(row.clue)}"
+          oninput="updateQuizClue(${i},'clue',this.value)">
+      </div>
+      <div style="flex:0 0 150px">
+        <input type="text" placeholder="Svar" value="${esc(row.answer)}" style="text-transform:uppercase" id="quiz-answer-${i}"
+          oninput="updateQuizClue(${i},'answer',this.value);updateQuizHint(${i})">
+        <div id="quiz-hint-${i}" style="font-size:11px;margin-top:3px;min-height:14px">${quizHintHtml(row.answer, letter)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const sudokuGrid = q.sudoku.puzzle.map(row => `<tr>${row.map(v =>
+    `<td style="width:26px;height:26px;text-align:center;border:1px solid var(--border);font-family:monospace;${v==null?'color:var(--text2)':'font-weight:700'}">${v==null?'·':v}</td>`
+  ).join('')}</tr>`).join('');
+
+  return `
+  <div class="card">
+    <div class="card-header"><span class="card-title">🧩 Ukens quiz</span></div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px">
+      Skriv inn løsningsordet og en ledetekst + svar for hver bokstav. Svaret må inneholde bokstaven
+      det er sin tur til — appen viser deg om det stemmer mens du skriver. Trykk «Skriv ut» for et
+      ferdig A4-ark med sudoku, ordspill og en svarlapp kundene kan levere ved disken.
+      Anbefaler et løsningsord på <strong>4–8 bokstaver</strong> så alt får plass på én side.
+    </p>
+
+    <div class="row" style="gap:14px;flex-wrap:wrap;margin-bottom:14px">
+      <div class="form-row" style="flex:1;min-width:140px">
+        <label>Uke</label>
+        <input type="text" value="${esc(q.weekLabel)}" oninput="updateQuizField('weekLabel',this.value)">
+      </div>
+      <div class="form-row" style="flex:1;min-width:160px">
+        <label>Dato / dager</label>
+        <input type="text" value="${esc(q.dateLabel)}" oninput="updateQuizField('dateLabel',this.value)">
+      </div>
+      <div class="form-row" style="flex:1;min-width:160px">
+        <label>Trekning</label>
+        <input type="text" value="${esc(q.drawWhen)}" oninput="updateQuizField('drawWhen',this.value)">
+      </div>
+      <div class="form-row" style="flex:1;min-width:140px">
+        <label>Premie</label>
+        <input type="text" value="${esc(q.prize)}" oninput="updateQuizField('prize',this.value)">
+      </div>
+    </div>
+
+    <div class="form-row" style="margin-bottom:14px">
+      <label>Hilsen (øverst på arket)</label>
+      <textarea rows="3" oninput="updateQuizField('greeting',this.value)">${esc(q.greeting)}</textarea>
+    </div>
+
+    <div class="form-row" style="max-width:220px;margin-bottom:16px">
+      <label>Løsningsord</label>
+      <input type="text" value="${esc(q.codeword)}" style="text-transform:uppercase;font-weight:700;letter-spacing:0.08em"
+        onchange="updateQuizCodeword(this.value)">
+    </div>
+
+    <div class="section-label" style="margin-bottom:10px">Ledetekster (én per bokstav i løsningsordet)</div>
+    ${clueRows}
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Sudoku (6×6)</span>
+      <div class="spacer"></div>
+      <button class="btn btn-sm" onclick="ST._quiz.sudoku = generateSudoku6(); renderTab();">🎲 Ny sudoku</button>
+    </div>
+    <table style="border-collapse:collapse;margin:4px 0">${sudokuGrid}</table>
+  </div>
+
+  <div class="card">
+    <div class="row" style="gap:10px">
+      <button class="btn btn-secondary" onclick="saveWeeklyQuiz()">💾 Lagre</button>
+      <button class="btn btn-primary" onclick="printUkensQuiz()">🖨️ Skriv ut ukens quiz</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--text2);margin:10px 0 0">
+      «Lagre» gjør fasiten synlig for ansatte i disken. «Skriv ut» lagrer automatisk og åpner arket for utskrift.
+    </p>
+  </div>
+
+  ${fasit}`;
+}
+
+// Read-only fasit — vises til ansatte (og til admin som en rask oppsummering).
+function buildQuizFasitCard(q) {
+  // Vis feilmelding fremfor eksempeldataene under — ellers kan ansatte tro placeholder-teksten
+  // ("VAFFEL") er ukens ekte fasit når tabellen faktisk ikke er satt opp ennå.
+  if (ST._quizLoadError) {
+    return `<div class="alert alert-error">Kunne ikke laste ukens quiz: ${esc(ST._quizLoadError)}<br><br>
+      Har du kjørt SQL-oppsettet for quiz-tabellen i Supabase ennå? Se quiz-setup.sql.</div>`;
+  }
+  const cw = (q.codeword || '').toUpperCase();
+  const clueRowsHtml = q.clues.map((c, i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${c.clue ? esc(c.clue) : '<span style="color:var(--text2)">–</span>'}</td>
+      <td style="font-weight:700;letter-spacing:0.05em">${esc((c.answer||'').toUpperCase())}</td>
+    </tr>`).join('');
+  const solutionRows = (q.sudoku && q.sudoku.solution ? q.sudoku.solution : []).map(row => `<tr>${row.map(v =>
+    `<td style="width:26px;height:26px;text-align:center;border:1px solid var(--border);font-family:monospace;font-weight:700">${v}</td>`
+  ).join('')}</tr>`).join('');
+
+  return `
+  <div class="card">
+    <div class="card-header"><span class="card-title">🔑 Fasit — ukens quiz</span></div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px">
+      Til bruk i disken — sjekk svarlapper mot løsningsordet under, gjerne i rolige stunder.
+    </p>
+    <div style="font-size:1.9rem;font-weight:800;letter-spacing:0.1em;color:var(--accent);margin-bottom:16px">${cw ? esc(cw) : '–'}</div>
+    ${q.clues.length ? `
+    <table style="margin-bottom:20px">
+      <thead><tr><th style="width:30px">#</th><th>Ledetekst</th><th>Svar</th></tr></thead>
+      <tbody>${clueRowsHtml}</tbody>
+    </table>` : ''}
+    ${solutionRows ? `
+    <div class="section-label" style="margin-bottom:8px">Sudoku-løsning</div>
+    <table style="border-collapse:collapse;margin:4px 0">${solutionRows}</table>` : ''}
+  </div>`;
+}
+
+function updateQuizField(key, val) {
+  const q = getQuizState();
+  q[key] = val;
+}
+
+function updateQuizClue(i, field, val) {
+  const q = getQuizState();
+  if (q.clues[i]) q.clues[i][field] = val;
+}
+
+function updateQuizHint(i) {
+  const q = getQuizState();
+  const cw = (q.codeword || '').toUpperCase();
+  const letter = cw[i] || '';
+  const input = el('quiz-answer-' + i);
+  const hintBox = el('quiz-hint-' + i);
+  if (!input || !hintBox) return;
+  hintBox.innerHTML = quizHintHtml(input.value, letter);
+}
+
+function updateQuizCodeword(val) {
+  const q = getQuizState();
+  const upper = val.toUpperCase().replace(/[^A-ZÆØÅ]/g, '');
+  q.codeword = upper;
+  const n = Math.max(upper.length, 1);
+  while (q.clues.length < n) q.clues.push({ clue: '', answer: '' });
+  q.clues = q.clues.slice(0, n);
+  renderTab();
+}
+
+function validateQuiz() {
+  const q = getQuizState();
+  const cw = (q.codeword || '').toUpperCase();
+  if (!cw) return 'Skriv inn et løsningsord først.';
+  for (let i = 0; i < cw.length; i++) {
+    const c = q.clues[i] || {};
+    if (!c.clue || !c.clue.trim()) return `Ledetekst ${i+1} mangler tekst.`;
+    if (!c.answer || !c.answer.trim()) return `Svar ${i+1} mangler.`;
+    if (quizLetterIndex(c.answer, cw[i]) < 0) return `Svaret på ledetekst ${i+1} («${c.answer}») inneholder ikke bokstaven «${cw[i]}» — bytt ord eller ret opp løsningsordet.`;
+  }
+  return null;
+}
+
+function printUkensQuiz() {
+  const err = validateQuiz();
+  if (err) { showAlert(err, 'error'); return; }
+  const q = getQuizState();
+  const cw = q.codeword.toUpperCase();
+
+  // window.open must happen synchronously in the click handler or it gets popup-blocked,
+  // so we save in the background (not awaited) instead of blocking on it first.
+  saveWeeklyQuiz(false);
+
+  const win = window.open('', '_blank');
+  if (!win) { showAlert('Nettleseren blokkerte utskriftsvinduet — tillat popup-vinduer for denne siden og prøv igjen.', 'error'); return; }
+
+  const sudokuRows = q.sudoku.puzzle.map(row => `<tr>${row.map(v =>
+    `<td class="${v==null?'blank':'given'}">${v==null?'·':v}</td>`
+  ).join('')}</tr>`).join('');
+
+  const clueBlocks = q.clues.map((c, i) => {
+    const letter = cw[i];
+    const pos = quizLetterIndex(c.answer, letter);
+    const boxes = c.answer.toUpperCase().split('').map((ch, j) =>
+      j === pos ? `<span class="letterbox marked" data-n="${i+1}"></span>` : `<span class="letterbox"></span>`
+    ).join('');
+    return `<div class="clue"><p>${esc(c.clue)}</p><div class="letterboxes">${boxes}</div></div>`;
+  }).join('');
+
+  const slots = cw.split('').map((_, i) => `<span class="slot" data-n="${i+1}"></span>`).join('');
+
+  win.document.write(`<!DOCTYPE html><html><head><title>Ukens Quiz — Kafé Smia</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
+  <style>
+    :root {
+      --paper: #f5efe1; --paper-raised: #fbf7ec; --ink: #2b241d; --ink-soft: #5b5044; --rule: #ded2ba;
+      --teal: #00bee6; --teal-deep: #076e86; --masthead-bg: #00bee6; --masthead-fg: #0e2d35;
+      --mustard: #d1a52c; --mustard-deep: #7c5e12; --mustard-soft: #f3e2ab;
+    }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Atkinson Hyperlegible","Segoe UI",sans-serif; display:flex; justify-content:center; padding:2.5rem 1.25rem 4rem; }
+    .sheet { width:100%; max-width:695px; background:var(--paper-raised); border:1px solid var(--rule); border-radius:6px; box-shadow:0 1px 2px rgba(0,0,0,.06),0 12px 32px -18px rgba(20,30,33,.35); overflow:hidden; }
+    .masthead { background:var(--masthead-bg); color:var(--masthead-fg); padding:1.2rem 1.6rem 1.05rem; display:flex; align-items:baseline; justify-content:space-between; gap:1rem; border-bottom:6px double var(--mustard); }
+    .masthead .kicker { font-weight:700; font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; opacity:.85; }
+    .masthead h1 { font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:clamp(2rem,5vw,2.7rem); line-height:1; margin:.25rem 0 0; text-wrap:balance; }
+    .masthead .issue { text-align:right; font-family:"JetBrains Mono",monospace; font-size:.85rem; line-height:1.5; white-space:nowrap; }
+    .greeting { padding:1.05rem 1.6rem .15rem; font-size:.98rem; line-height:1.45; max-width:62ch; }
+    .greeting strong { color:var(--teal-deep); }
+    .section-label { font-family:"Fraunces",Georgia,serif; font-weight:600; font-size:1.15rem; color:var(--teal-deep); margin:0 0 .4rem; display:flex; align-items:center; gap:.5rem; }
+    .section-label .num { font-family:"JetBrains Mono",monospace; font-size:.7rem; font-weight:700; color:var(--paper-raised); background:var(--ink-soft); border-radius:50%; width:1.4rem; height:1.4rem; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+    .body-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; padding:1.05rem 1.6rem .2rem; }
+    .sudoku { border-collapse:collapse; margin:0 auto; font-family:"JetBrains Mono",monospace; font-variant-numeric:tabular-nums; }
+    .sudoku td { width:1.95rem; height:1.95rem; text-align:center; vertical-align:middle; border:1px solid var(--rule); font-size:1rem; color:var(--ink); }
+    .sudoku td.given { font-weight:700; }
+    .sudoku td.blank { color:var(--ink-soft); }
+    .sudoku tr:nth-child(2) td, .sudoku tr:nth-child(4) td { border-bottom:2px solid var(--ink-soft); }
+    .sudoku td:nth-child(3), .sudoku td:nth-child(6) { border-right:2px solid var(--ink-soft); }
+    .sudoku tr:first-child td { border-top:2px solid var(--ink-soft); }
+    .sudoku td:first-child { border-left:2px solid var(--ink-soft); }
+    .sudoku tr:last-child td { border-bottom:2px solid var(--ink-soft); }
+    .sudoku td:last-child { border-right:2px solid var(--ink-soft); }
+    .hint { text-align:center; font-size:.78rem; color:var(--ink-soft); margin-top:.4rem; line-height:1.4; }
+    .section-note { font-size:.78rem; color:var(--ink-soft); line-height:1.4; margin:0 0 .55rem; }
+    .section-note .swatch { display:inline-block; width:.8rem; height:.8rem; background:var(--mustard); border:1px solid var(--mustard-deep); border-radius:2px; vertical-align:-.05em; }
+    .clues { display:flex; flex-direction:column; gap:.45rem; }
+    .clue { padding-bottom:.3rem; border-bottom:1px dotted var(--rule); }
+    .clue p { margin:0 0 .25rem; font-size:.86rem; line-height:1.25; }
+    .letterboxes { display:flex; gap:.28rem; flex-wrap:wrap; }
+    .letterbox { width:1.35rem; height:1.4rem; border:1.5px solid var(--ink-soft); border-radius:4px; position:relative; flex:none; }
+    .letterbox.marked { background:var(--mustard-soft); border-color:var(--mustard-deep); }
+    .letterbox.marked::after { content:attr(data-n); position:absolute; left:50%; bottom:-1.05rem; transform:translateX(-50%); font-family:"JetBrains Mono",monospace; font-size:.65rem; font-weight:700; color:var(--mustard-deep); }
+    .codeword-box { margin:1.1rem 1.6rem .4rem; background:var(--mustard-soft); border:1.5px dashed var(--mustard-deep); border-radius:8px; padding:.7rem 1.1rem .95rem; display:flex; align-items:flex-start; gap:1rem; flex-wrap:wrap; }
+    .codeword-box .stamp { padding-top:.2rem; font-family:"Fraunces",Georgia,serif; font-weight:700; font-size:.95rem; color:var(--teal-deep); text-transform:uppercase; letter-spacing:.06em; flex:none; }
+    .codeword-box .slots { display:flex; gap:.45rem; font-family:"JetBrains Mono",monospace; margin-bottom:.6rem; }
+    .codeword-box .slot { width:1.7rem; height:1.85rem; border-bottom:2.5px solid var(--mustard-deep); position:relative; }
+    .codeword-box .slot::after { content:attr(data-n); position:absolute; left:50%; bottom:-1.15rem; transform:translateX(-50%); font-size:.62rem; font-weight:700; color:var(--mustard-deep); }
+    .tear { margin:1.2rem 0 0; border:none; border-top:2px dashed var(--rule); position:relative; }
+    .tear::before { content:"✂ klipp her"; position:absolute; left:2rem; top:-.65rem; background:var(--paper-raised); padding:0 .5rem; font-size:.72rem; color:var(--ink-soft); letter-spacing:.06em; }
+    .slip { padding:1rem 1.6rem 1.3rem; display:grid; grid-template-columns:1.3fr 1fr; gap:1.2rem; }
+    .slip h2 { font-family:"Fraunces",Georgia,serif; font-size:1.02rem; margin:0 0 .4rem; color:var(--teal-deep); }
+    .slip .field { margin-bottom:.55rem; }
+    .slip label { display:block; font-size:.74rem; color:var(--ink-soft); margin-bottom:.15rem; }
+    .slip .fill-line { border-bottom:1.5px solid var(--ink-soft); height:1.4rem; }
+    .prize-note { font-size:.8rem; line-height:1.4; color:var(--ink-soft); border-left:3px solid var(--teal); padding-left:.85rem; }
+    .prize-note strong { color:var(--ink); }
+    .colophon { text-align:center; font-size:.68rem; color:var(--ink-soft); padding:0 1.6rem .9rem; letter-spacing:.03em; }
+    @media print { @page { size:A4; margin:10mm; } body{padding:0;background:white} .sheet{box-shadow:none;border:none;max-width:100%} }
+  </style></head><body>
+  <div class="sheet">
+    <div class="masthead">
+      <div><div class="kicker">Kafé Smia</div><h1>Ukens Quiz</h1></div>
+      <div class="issue">${esc(q.weekLabel)}<br>${esc(q.dateLabel)}</div>
+    </div>
+    <p class="greeting">${esc(q.greeting)}</p>
+    <div class="body-grid">
+      <div>
+        <p class="section-label"><span class="num">1</span>Sudoku</p>
+        <table class="sudoku" aria-label="Sudoku 6 ganger 6">${sudokuRows}</table>
+        <p class="hint">Fyll inn tallene 1–6 slik at hver rad, kolonne og boks (2×3) har alle tallene én gang.</p>
+      </div>
+      <div>
+        <p class="section-label"><span class="num">2</span>Finn ordet</p>
+        <p class="section-note">Skriv svaret i rutene. Ruta med farge <span class="swatch"></span> er en bokstav i løsningsordet — det lille tallet viser hvilken plass den har der nede.</p>
+        <div class="clues">${clueBlocks}</div>
+      </div>
+    </div>
+    <div class="codeword-box">
+      <span class="stamp">Løsningsord</span>
+      <div class="slots">${slots}</div>
+    </div>
+    <hr class="tear">
+    <div class="slip">
+      <div>
+        <h2>Svarlapp — lever ved disken</h2>
+        <div class="field"><label>Navn</label><div class="fill-line"></div></div>
+        <div class="field"><label>Løsningsord</label><div class="fill-line"></div></div>
+      </div>
+      <p class="prize-note">Alle riktige svar er med i trekningen hver <strong>${esc(q.drawWhen)}</strong>. Vinneren får <strong>${esc(q.prize)}</strong> — og navnet henger på tavla neste uke.</p>
+    </div>
+    <p class="colophon">Kafé Smia · Ukens Quiz lages med kjærlighet hver uke</p>
+  </div>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 400));<\/script>
+  </body></html>`);
   win.document.close();
 }
 
