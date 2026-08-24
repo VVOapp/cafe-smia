@@ -7446,6 +7446,57 @@ async function buildLojalitet() {
   }
   const nameById = Object.fromEntries(ST.cafeProducts.map(p => [p.id, p.name]));
 
+  let thermosSection = '';
+  try {
+    const [cups, redemptions, eligible] = await Promise.all([
+      sbGet('thermos_cups?select=id,sold'),
+      sbGet('thermos_redemptions?select=id'),
+      sbGet('thermos_eligible_products?select=*')
+    ]);
+    const sold = cups.filter(c => c.sold).length;
+    thermosSection = `
+    <div class="section-label" style="margin-top:1.5rem">🥤 Termokopp-ordning</div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Termokopper</span></div>
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat"><div class="stat-val">${cups.length}</div><div class="stat-label">Klistremerker laget</div></div>
+        <div class="stat"><div class="stat-val">${sold}</div><div class="stat-label">Solgt</div></div>
+        <div class="stat"><div class="stat-val">${redemptions.length}</div><div class="stat-label">Gratis påfyll totalt</div></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">
+        Skriv ut klistremerker og lim på koppene. Ved salg: skann koppen i
+        <a href="loyalty.html" target="_blank" rel="noopener">skanneren 🎁</a> og trykk "Merk som solgt" —
+        deretter gir hver skanning gratis påfyll.
+      </p>
+      <div class="row">
+        <div style="max-width:120px">
+          <input type="number" id="tc-sticker-count" min="1" max="200" step="1" value="20">
+        </div>
+        <button class="btn btn-secondary" onclick="printThermosStickers()">🖨️ Skriv ut klistremerker</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Godkjente produkter for gratis påfyll</span></div>
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">Vises til ansatte i skanneren, slik at det er tydelig hva termokoppen gjelder for.</p>
+      <div class="row" style="margin-bottom:10px">
+        <select id="tc-eligible-product" style="max-width:260px">
+          ${ST.cafeProducts.filter(p => !eligible.some(e => e.cafe_product_id === p.id)).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="addThermosEligibleProduct()">+ Legg til</button>
+      </div>
+      ${eligible.length === 0 ? '<div class="empty">Ingen produkter valgt ennå — legg til f.eks. "Kaffe".</div>' : `
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        ${eligible.map(e => `<span class="badge" style="background:var(--accent-light);color:var(--accent);display:inline-flex;align-items:center;gap:6px">
+          ${esc(nameById[e.cafe_product_id] || 'Ukjent produkt')}
+          <button onclick="removeThermosEligibleProduct(${e.id})" style="background:none;border:none;cursor:pointer;padding:0;font-size:0.8rem;color:var(--accent)">✕</button>
+        </span>`).join('')}
+      </div>`}
+    </div>`;
+  } catch(e) {
+    thermosSection = `<div class="alert alert-error">Kunne ikke laste termokopp-data: ${esc(e.message)}<br><br>
+      Har du kjørt SQL-oppsettet for termokopp-tabellene i Supabase ennå? Se thermos-setup.sql.</div>`;
+  }
+
   return `
   <div class="card">
     <div class="card-header">
@@ -7505,7 +7556,64 @@ async function buildLojalitet() {
       </div>
     </div>
   </div>
+  ${thermosSection}
   ${buildLrModal()}`;
+}
+
+async function addThermosEligibleProduct() {
+  const id = parseInt(el('tc-eligible-product')?.value, 10);
+  if (!id) { showAlert('Velg et produkt', 'error'); return; }
+  try {
+    await sbPost('thermos_eligible_products', [{ cafe_product_id: id }]);
+    await renderTab();
+  } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
+}
+
+async function removeThermosEligibleProduct(id) {
+  try {
+    await sbDelete(`thermos_eligible_products?id=eq.${id}`);
+    await renderTab();
+  } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
+}
+
+function printThermosStickers() {
+  const count = Math.max(1, Math.min(200, parseInt(el('tc-sticker-count')?.value, 10) || 20));
+  const win = window.open('', '_blank');
+  if (!win) { showAlert('Nettleseren blokkerte utskriftsvinduet — tillat popup-vinduer for denne siden og prøv igjen.', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>Termokopp-klistremerker — Smia Café</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></` + `script>
+    <style>
+      body{font-family:Arial,sans-serif;margin:0;padding:16px}
+      .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+      .sticker{border:1px dashed #999;border-radius:50%;padding:8px;text-align:center;page-break-inside:avoid;aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+      .sticker p{font-size:8px;color:#666;margin:4px 0 0}
+      @media print { body{padding:0} }
+    </style></head><body>
+    <div class="grid" id="grid"></div>
+    <script>
+      const grid = document.getElementById('grid');
+      for (let i = 0; i < ${count}; i++) {
+        const id = 's' + i;
+        const box = document.createElement('div');
+        box.className = 'sticker';
+        box.innerHTML = '<div id="' + id + '"></div><p>Smia termokopp</p>';
+        grid.appendChild(box);
+      }
+      window.addEventListener('load', () => {
+        for (let i = 0; i < ${count}; i++) {
+          const token = (crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'-'+i+'-'+Math.random().toString(16).slice(2)));
+          new QRCode(document.getElementById('s'+i), { text: token, width: 70, height: 70, correctLevel: QRCode.CorrectLevel.M });
+          fetch('${SUPABASE_URL}/rest/v1/thermos_cups', {
+            method: 'POST',
+            headers: { 'apikey': '${SUPABASE_KEY}', 'Authorization': 'Bearer ${SUPABASE_KEY}', 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: JSON.stringify({ id: token })
+          }).catch(() => {});
+        }
+        setTimeout(() => window.print(), 500);
+      });
+    <\/script>
+    </body></html>`);
+  win.document.close();
 }
 
 function buildLrModal() {

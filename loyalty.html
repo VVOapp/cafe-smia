@@ -102,7 +102,7 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
     <div class="logo">🎁</div>
     <div style="flex:1">
       <h1>Lojalitet</h1>
-      <p>Skann kundens kode</p>
+      <p>Skann kort eller termokopp</p>
     </div>
     <button class="btn btn-sm" onclick="doLogout()">Logg ut</button>
   </header>
@@ -119,7 +119,7 @@ const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 const HASH_STAFF = 'c8c0b68b66895b8ff901f6eef02a6ab128a60fa5111041f5ad4c566797c152d4';
 const HASH_ADMIN = '032db610b100d8352675f993735234479b396363fbc0f64eaa39d14dea08675d';
 
-const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false };
+const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false, eligibleProducts: [], thermosCup: null, thermosRedemptionCount: 0 };
 
 async function sha256hex(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -180,35 +180,55 @@ function showAlert(msg, type = 'success') {
 async function startApp() {
   el('login-screen').style.display = 'none';
   el('app').style.display = '';
+  let nameById = {};
   try {
     const [rules, products] = await Promise.all([
       sbGet('loyalty_rules?active=eq.true&select=*'),
       sbGet('cafe_products?select=id,name')
     ]);
-    const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+    nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
     ST.rules = rules.map(r => ({ ...r, productName: nameById[r.cafe_product_id] || 'Ukjent produkt' }));
   } catch(e) {
     showAlert('Kunne ikke laste lojalitetsregler: ' + e.message, 'error');
     ST.rules = [];
+  }
+  // Thermos eligible-products list is optional — fail silently if the
+  // thermos-setup.sql tables haven't been created yet.
+  try {
+    const eligible = await sbGet('thermos_eligible_products?select=*');
+    ST.eligibleProducts = eligible.map(e => nameById[e.cafe_product_id] || 'Ukjent produkt');
+  } catch(e) {
+    ST.eligibleProducts = [];
   }
   renderMain();
 }
 
 function renderMain() {
   const m = el('main');
+  if (ST.thermosCup) {
+    m.innerHTML = `
+      <div class="card">
+        <div class="customer-chip">Termokopp: ${esc(ST.thermosCup.id)}</div>
+      </div>
+      ${renderThermosCard()}
+      <button class="btn" onclick="resetScan()">↺ Skann neste kunde</button>
+    `;
+    return;
+  }
   if (!ST.customerId) {
+    const noRulesAtAll = ST.rules.length === 0;
     m.innerHTML = `
       <div class="card" style="text-align:center">
-        ${ST.rules.length === 0 ? `<div class="empty">Ingen aktive lojalitetsregler ennå.<br>Sett dem opp i Kafeoversikt → Lojalitet.</div>` : `
-        <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Be kunden vise koden sin, og trykk skann.</p>
-        <button class="btn btn-primary" onclick="startScan()">📷 Skann kundekode</button>
+        ${noRulesAtAll ? `<div class="empty" style="margin-bottom:14px">Ingen aktive lojalitetsregler ennå.<br>Sett dem opp i Kafeoversikt → Lojalitet.</div>` : ''}
+        <p style="color:var(--text2);font-size:13px;margin-bottom:14px">Be kunden vise koden sin (lojalitetskort eller termokopp), og trykk skann.</p>
+        <button class="btn btn-primary" onclick="startScan()">📷 Skann kode</button>
         <div style="margin-top:14px">
           <a href="#" onclick="showManualEntry();return false;" style="font-size:12.5px;color:var(--text3)">Skriv inn kode manuelt</a>
         </div>
         <div id="manual-entry" style="display:none;margin-top:12px;text-align:left">
           <input id="manual-code" placeholder="Lim inn / skriv kode">
           <button class="btn btn-sm btn-primary" style="width:100%;margin-top:8px" onclick="submitManualEntry()">Slå opp</button>
-        </div>`}
+        </div>
       </div>`;
     return;
   }
@@ -219,6 +239,26 @@ function renderMain() {
     ${ST.rules.map(r => renderRuleCard(r)).join('')}
     <button class="btn" onclick="resetScan()">↺ Skann neste kunde</button>
   `;
+}
+
+function renderThermosCard() {
+  const cup = ST.thermosCup;
+  if (!cup.sold) {
+    return `
+    <div class="card">
+      <div class="product-name">🥤 Ikke solgt ennå</div>
+      <p style="color:var(--text2);font-size:13px;margin:6px 0 12px">Denne koppen er ikke registrert som solgt. Selg koppen i kassen, og trykk deretter under.</p>
+      <button class="btn btn-primary" onclick="markThermosSold()">💰 Merk som solgt</button>
+    </div>`;
+  }
+  const eligibleLine = ST.eligibleProducts.length > 0 ? `Gjelder: ${esc(ST.eligibleProducts.join(', '))}` : 'Ingen produkter satt opp ennå i Kafeoversikt → Lojalitet.';
+  return `
+  <div class="card">
+    <div class="product-name">☕ Termokopp — gratis påfyll</div>
+    <div class="progress-label">${eligibleLine}</div>
+    <div class="progress-label" style="margin-top:4px">Brukt ${ST.thermosRedemptionCount} gang${ST.thermosRedemptionCount === 1 ? '' : 'er'} totalt</div>
+    <button class="btn btn-green" style="margin-top:10px" onclick="redeemThermos()">☕ Registrer gratis påfyll</button>
+  </div>`;
 }
 
 function renderRuleCard(rule) {
@@ -257,6 +297,22 @@ function submitManualEntry() {
 async function onCodeScanned(token) {
   stopScan();
   if (!token) return;
+
+  // Thermos cup codes are pre-registered at print time, so check that
+  // table first. A missing table (thermos-setup.sql not run yet) or an
+  // unmatched code just falls through to the regular customer lookup.
+  try {
+    const cupRows = await sbGet(`thermos_cups?id=eq.${encodeURIComponent(token)}&select=*`);
+    if (cupRows.length > 0) {
+      ST.thermosCup = cupRows[0];
+      ST.customerId = null;
+      await loadThermosRedemptionCount();
+      if (navigator.vibrate) navigator.vibrate(80);
+      renderMain();
+      return;
+    }
+  } catch(e) { /* thermos tables not set up — ignore and try as a loyalty code */ }
+
   try {
     let rows = await sbGet(`loyalty_customers?id=eq.${encodeURIComponent(token)}&select=id`);
     if (rows.length === 0) {
@@ -264,12 +320,44 @@ async function onCodeScanned(token) {
       showAlert('Ny lojalitetskunde registrert 🎉');
     }
     ST.customerId = token;
+    ST.thermosCup = null;
     await loadStamps();
     if (navigator.vibrate) navigator.vibrate(80);
   } catch(e) {
     showAlert('Feil ved oppslag: ' + e.message, 'error');
   }
   renderMain();
+}
+
+async function loadThermosRedemptionCount() {
+  try {
+    const rows = await sbGet(`thermos_redemptions?cup_id=eq.${encodeURIComponent(ST.thermosCup.id)}&select=id`);
+    ST.thermosRedemptionCount = rows.length;
+  } catch(e) {
+    ST.thermosRedemptionCount = 0;
+  }
+}
+
+async function markThermosSold() {
+  try {
+    await sbPatch(`thermos_cups?id=eq.${encodeURIComponent(ST.thermosCup.id)}`, { sold: true, sold_at: new Date().toISOString() });
+    ST.thermosCup = { ...ST.thermosCup, sold: true };
+    showAlert('Kopp registrert som solgt! 🥤');
+    renderMain();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+}
+
+async function redeemThermos() {
+  try {
+    await sbPost('thermos_redemptions', [{ cup_id: ST.thermosCup.id }]);
+    await loadThermosRedemptionCount();
+    showAlert('Gratis påfyll registrert! ☕');
+    renderMain();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
 }
 
 async function loadStamps() {
@@ -308,6 +396,8 @@ async function redeem(ruleId) {
 function resetScan() {
   ST.customerId = null;
   ST.stamps = [];
+  ST.thermosCup = null;
+  ST.thermosRedemptionCount = 0;
   renderMain();
 }
 
