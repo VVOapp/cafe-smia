@@ -7804,7 +7804,7 @@ async function ensureQuizLoaded() {
         greeting:  r.greeting || '',
         codeword:  r.codeword || '',
         clues:     Array.isArray(r.clues) && r.clues.length ? r.clues : [{ clue: '', answer: '' }],
-        drawWhen:  r.draw_when || 'torsdag kl. 14',
+        drawWhen:  r.draw_when || 'torsdag kl. 13',
         prize:     r.prize || 'kaffe og vaffel',
         sudoku:    (r.sudoku_puzzle && r.sudoku_solution) ? { puzzle: r.sudoku_puzzle, solution: r.sudoku_solution } : generateSudoku6(),
       };
@@ -7860,7 +7860,7 @@ function getQuizState() {
         { clue: 'Hvitt og luftig, gjerne på toppen av kaken', answer: 'KREM' },
         { clue: 'Det motsatte av søtt, finnes i brødskiva', answer: 'SALT' },
       ],
-      drawWhen: 'torsdag kl. 14',
+      drawWhen: 'torsdag kl. 13',
       prize: 'kaffe og vaffel',
       sudoku: generateSudoku6(),
     };
