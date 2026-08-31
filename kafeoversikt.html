@@ -7223,8 +7223,8 @@ async function ensureQuizLoaded() {
     const r = rows && rows[0];
     if (r) {
       ST._quiz = {
-        weekLabel: r.week_label || quizWeekLabel(new Date()),
-        dateLabel: r.date_label || quizDateLabel(new Date()),
+        weekLabel: quizWeekLabel(new Date()),   // always current week
+        dateLabel: quizDateLabel(new Date()),   // always current mon–thu dates
         greeting:  r.greeting || '',
         codeword:  r.codeword || '',
         clues:     Array.isArray(r.clues) && r.clues.length ? r.clues : [{ clue: '', answer: '' }],
@@ -7398,15 +7398,14 @@ function buildUkensQuizTab() {
       Anbefaler et løsningsord på <strong>4–8 bokstaver</strong> så alt får plass på én side.
     </p>
 
+    <div style="display:inline-flex;align-items:center;gap:10px;margin-bottom:16px;padding:8px 14px;background:var(--accent-light,#f0f4ff);border:1px solid var(--border);border-radius:8px">
+      <span style="font-size:1.1rem">📅</span>
+      <span style="font-weight:700;color:var(--accent)">${esc(q.weekLabel)}</span>
+      <span style="color:var(--text2)">·</span>
+      <span style="color:var(--text2);font-size:0.92rem">${esc(q.dateLabel)}</span>
+    </div>
+
     <div class="row" style="gap:14px;flex-wrap:wrap;margin-bottom:14px">
-      <div class="form-row" style="flex:1;min-width:140px">
-        <label>Uke</label>
-        <input type="text" value="${esc(q.weekLabel)}" oninput="updateQuizField('weekLabel',this.value)">
-      </div>
-      <div class="form-row" style="flex:1;min-width:160px">
-        <label>Dato / dager</label>
-        <input type="text" value="${esc(q.dateLabel)}" oninput="updateQuizField('dateLabel',this.value)">
-      </div>
       <div class="form-row" style="flex:1;min-width:160px">
         <label>Trekning</label>
         <input type="text" value="${esc(q.drawWhen)}" oninput="updateQuizField('drawWhen',this.value)">
