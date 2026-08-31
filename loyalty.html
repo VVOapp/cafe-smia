@@ -34,11 +34,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 #app, #login-screen .login-card { max-width: 480px; margin: 0 auto; }
 #app { padding: 1rem; }
 
-#login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 1rem; }
-.login-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 100%; max-width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
-.login-card h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; color: var(--accent); }
-.login-card p { font-size: 13px; color: var(--text3); margin-bottom: 1.5rem; }
-
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; }
 .logo { width: 36px; height: 36px; background: var(--accent); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: white; font-size: 18px; }
 header h1 { font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; }
@@ -82,29 +77,13 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 </head>
 <body>
 
-<div id="login-screen">
-  <div class="login-card">
-    <h1>🎁 Smia</h1>
-    <p>Lojalitetsskanner — logg inn for å fortsette</p>
-    <form id="login-form" onsubmit="doLogin();return false;" autocomplete="on">
-      <input type="text" name="username" autocomplete="username" value="loyalty" style="display:none" aria-hidden="true">
-      <div style="margin-bottom:12px">
-        <input type="password" id="pw-input" name="password" autocomplete="current-password" placeholder="Skriv inn passord...">
-      </div>
-      <div id="login-error" class="alert alert-error" style="display:none"></div>
-      <button type="submit" class="btn btn-primary">Logg inn</button>
-    </form>
-  </div>
-</div>
-
-<div id="app" style="display:none">
+<div id="app">
   <header>
     <div class="logo">🎁</div>
     <div style="flex:1">
       <h1>Lojalitet</h1>
       <p>Skann kort eller termokopp</p>
     </div>
-    <button class="btn btn-sm" onclick="doLogout()">Logg ut</button>
   </header>
 
   <div id="alert-area"></div>
@@ -115,36 +94,7 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 const SUPABASE_URL  = 'https://kvtugiflpxehytpplkqw.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
 
-// Same pre-computed SHA-256 hashes as kafeoversikt.html — either role can scan.
-const HASH_STAFF = 'c8c0b68b66895b8ff901f6eef02a6ab128a60fa5111041f5ad4c566797c152d4';
-const HASH_ADMIN = '032db610b100d8352675f993735234479b396363fbc0f64eaa39d14dea08675d';
-
 const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false, eligibleProducts: [], thermosCup: null, thermosRedemptionCount: 0 };
-
-async function sha256hex(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-async function doLogin() {
-  const pw = document.getElementById('pw-input').value;
-  if (!pw) return;
-  const h = await sha256hex(pw);
-  const err = document.getElementById('login-error');
-  if (h === HASH_ADMIN || h === HASH_STAFF) {
-    localStorage.setItem('smia_role', h === HASH_ADMIN ? 'admin' : 'staff');
-    startApp();
-  } else {
-    err.style.display = '';
-    err.textContent = 'Feil passord. Prøv igjen.';
-    document.getElementById('pw-input').value = '';
-  }
-}
-
-function doLogout() {
-  localStorage.removeItem('smia_role');
-  location.reload();
-}
 
 async function sbFetch(path, options = {}) {
   const url = SUPABASE_URL + '/rest/v1/' + path;
@@ -178,8 +128,6 @@ function showAlert(msg, type = 'success') {
 //  APP INIT
 // =============================================================
 async function startApp() {
-  el('login-screen').style.display = 'none';
-  el('app').style.display = '';
   let nameById = {};
   try {
     const [rules, products] = await Promise.all([
@@ -449,10 +397,7 @@ function stopScan() {
 // =============================================================
 //  BOOT
 // =============================================================
-const savedRole = localStorage.getItem('smia_role');
-if (savedRole === 'admin' || savedRole === 'staff') {
-  startApp();
-}
+startApp();
 </script>
 </body>
 </html>
