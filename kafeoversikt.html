@@ -6879,9 +6879,12 @@ async function buildLojalitet() {
   const nav = `
   <div class="sub-nav">
     <button class="${subTab==='program'?'active':''}" onclick="ST.subTab.lojalitet='program';renderTab()">🎁 Lojalitetsprogram</button>
+    <button class="${subTab==='stats'?'active':''}"   onclick="ST.subTab.lojalitet='stats';renderTab()">📊 Statistikk</button>
     <button class="${subTab==='quiz'?'active':''}"    onclick="ST.subTab.lojalitet='quiz';renderTab()">🧩 Ukens quiz</button>
   </div>`;
-  const content = subTab === 'quiz' ? buildUkensQuizTab() : await buildLojalitetProgram();
+  const content = subTab === 'quiz'  ? buildUkensQuizTab()
+                : subTab === 'stats' ? await buildLojalitetStats()
+                : await buildLojalitetProgram();
   return nav + content;
 }
 
@@ -7062,6 +7065,133 @@ function printThermosStickers() {
     <\/script>
     </body></html>`);
   win.document.close();
+}
+
+// =============================================================
+//  LOJALITET — STATISTIKK
+// =============================================================
+async function buildLojalitetStats() {
+  let customers = [], stamps = [], rules = [];
+  try {
+    [customers, stamps, rules] = await Promise.all([
+      sbGet('loyalty_customers?select=id'),
+      sbGet('loyalty_stamps?select=customer_id,rule_id,redeemed_at,created_at'),
+      sbGet('loyalty_rules?select=id,cafe_product_id&order=id'),
+    ]);
+  } catch(e) {
+    return `<div class="alert alert-error">Kunne ikke laste statistikk: ${esc(e.message)}</div>`;
+  }
+
+  // Also try thermos redemptions (may not exist yet)
+  let thermosCount = 0;
+  try {
+    const t = await sbGet('thermos_redemptions?select=id');
+    thermosCount = t.length;
+  } catch(e) { /* table may not exist */ }
+
+  // Product names
+  let products = [];
+  try { products = await sbGet('cafe_products?select=id,name'); } catch(e) {}
+  const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+  const ruleNames = Object.fromEntries(rules.map(r => [r.id, nameById[r.cafe_product_id] || `Regel ${r.id}`]));
+
+  // Aggregate per customer
+  const byCustomer = {};
+  for (const s of stamps) {
+    if (!byCustomer[s.customer_id]) byCustomer[s.customer_id] = { total: 0, redeemed: 0 };
+    byCustomer[s.customer_id].total++;
+    if (s.redeemed_at) byCustomer[s.customer_id].redeemed++;
+  }
+
+  // Aggregate per rule
+  const byRule = {};
+  for (const s of stamps) {
+    if (!byRule[s.rule_id]) byRule[s.rule_id] = { issued: 0, redeemed: 0 };
+    byRule[s.rule_id].issued++;
+    if (s.redeemed_at) byRule[s.rule_id].redeemed++;
+  }
+
+  const totalCustomers = customers.length;
+  const activeCustomers = Object.keys(byCustomer).length;
+  const totalStamps = stamps.length;
+  const totalRedeemed = stamps.filter(s => s.redeemed_at).length;
+
+  // Sort customers by total stamps desc
+  const sortedCustomers = Object.entries(byCustomer)
+    .sort((a, b) => b[1].total - a[1].total);
+
+  const ruleRows = Object.entries(byRule).map(([rid, d]) => `
+    <tr>
+      <td style="padding:8px 6px;border-bottom:1px solid var(--border)">${esc(ruleNames[rid] || 'Ukjent')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:center">${d.issued}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:center;color:#3B6D11;font-weight:600">${d.redeemed}</td>
+    </tr>`).join('');
+
+  const customerRows = sortedCustomers.map(([id, d]) => {
+    const short = id.length > 16 ? id.slice(0,8)+'…'+id.slice(-4) : id;
+    return `
+    <tr id="crow-${esc(id)}">
+      <td style="padding:7px 6px;border-bottom:1px solid var(--border);font-family:monospace;font-size:12px;word-break:break-all">${esc(short)}</td>
+      <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center">${d.total}</td>
+      <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;color:#3B6D11;font-weight:600">${d.redeemed}</td>
+      <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center">
+        <button class="btn btn-sm btn-danger" onclick="deleteCustomer(${JSON.stringify(id)})">🗑️ Slett</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  return `
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1.25rem">
+    <div class="stat"><div class="stat-val">${totalCustomers}</div><div class="stat-label">Registrerte kunder</div></div>
+    <div class="stat"><div class="stat-val">${activeCustomers}</div><div class="stat-label">Aktive (har stempler)</div></div>
+    <div class="stat"><div class="stat-val">${totalStamps}</div><div class="stat-label">Stempler utstedt</div></div>
+    <div class="stat"><div class="stat-val">${totalRedeemed}</div><div class="stat-label">Gratis varer innløst</div></div>
+    ${thermosCount > 0 ? `<div class="stat"><div class="stat-val">${thermosCount}</div><div class="stat-label">Termokopp-påfyll</div></div>` : ''}
+  </div>
+
+  ${ruleRows ? `
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-header"><span class="card-title">📋 Per lojalitetsregel</span></div>
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Produkt</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Stempler</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Innløst</th>
+        </tr></thead>
+        <tbody>${ruleRows}</tbody>
+      </table>
+    </div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">👤 Alle kunder</span><span style="font-size:12px;color:var(--text3)">Sortert etter aktivitet</span></div>
+    ${sortedCustomers.length === 0 ? '<div class="empty">Ingen kunder ennå</div>' : `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Anonym ID</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Stempler</th>
+          <th style="text-align:center;padding:6px;color:var(--text3);font-weight:600;border-bottom:2px solid var(--border)">Innløst</th>
+          <th style="padding:6px;border-bottom:2px solid var(--border)"></th>
+        </tr></thead>
+        <tbody id="customer-stat-body">${customerRows}</tbody>
+      </table>
+    </div>`}
+  </div>`;
+}
+
+async function deleteCustomer(id) {
+  if (!confirm(`Slett all data for denne kunden?\n\n${id}\n\nDette kan ikke angres.`)) return;
+  try {
+    await sbDelete(`loyalty_stamps?customer_id=eq.${encodeURIComponent(id)}`);
+    await sbDelete(`loyalty_customers?id=eq.${encodeURIComponent(id)}`);
+    // Remove row from table without full re-render
+    const row = document.getElementById('crow-' + id);
+    if (row) row.remove();
+  } catch(e) {
+    alert('Feil ved sletting: ' + e.message);
+  }
 }
 
 function buildLrModal() {
