@@ -7509,7 +7509,7 @@ const QUIZ_ORDBANK = [
   { clue: 'Søtt bærpålegg på glass',                  answer: 'SYLTETØY' },
   { clue: 'Gult frukt med surt smak',                 answer: 'SITRON' },
   { clue: 'Rødt bær, populært på kake',               answer: 'JORDBÆR' },
-  { clue: 'Varm og kremet suppeskål',                 answer: 'SUPPE' },
+  { clue: 'Varm, flytende rett servert i bolle',       answer: 'SUPPE' },
   { clue: 'Liten, rund og søt – til kaffen',          answer: 'BOLLE' },
   { clue: 'Norsk ost, gul og fast',                   answer: 'OST' },
   { clue: 'Hvit og kremet, lages av fløte',           answer: 'KREM' },
@@ -7535,7 +7535,7 @@ const QUIZ_ORDBANK = [
   { clue: 'Søt og myk, lages av sukker og eggehvite', answer: 'MARENGS' },
   { clue: 'Norsk flatbrød, bakt sprøtt',              answer: 'KNEKKEBRØD' },
   { clue: 'Rød og søt bær til syltetøy',              answer: 'RIPS' },
-  { clue: 'Gul og søt mangofrukt fra tropene',        answer: 'MANGO' },
+  { clue: 'Gul og søt tropisk frukt med stor stein',  answer: 'MANGO' },
   { clue: 'Sprø og søt mandelkake',                   answer: 'MAKRON' },
   { clue: 'Varm havregrøt til frokost',               answer: 'GRØT' },
   { clue: 'Søt og kremet vaniljefyll til kaker',      answer: 'VANILJEKREM' },
@@ -7555,7 +7555,7 @@ const QUIZ_ORDBANK = [
   { clue: 'Kald pressejuice fra appelsin',            answer: 'APPELSINJUICE' },
   { clue: 'Brun sirup til vafler og pannekaker',      answer: 'SIRUP' },
   { clue: 'Lett og luftig kake av egg og mel',        answer: 'SUKKERBRØD' },
-  { clue: 'Hvit og syrlig yoghurt',                   answer: 'YOGHURT' },
+  { clue: 'Syrlig meieriprodukt, ligner rømme men rundere i smaken', answer: 'YOGHURT' },
   { clue: 'Sprø frukostblanding med melk',            answer: 'MÜSLI' },
   { clue: 'Bakt potet med sprø skall',                answer: 'POTET' },
   { clue: 'Norsk fiskepålegg på brød',                answer: 'SARDINER' },
@@ -7584,14 +7584,21 @@ function autoGenerateQuizClues() {
   const cw = (q.codeword || '').toUpperCase();
   if (!cw) { showAlert('Skriv inn et løsningsord først', 'error'); return; }
 
+  const cwLower = cw.toLowerCase();
   const used = new Set();
   const newClues = [];
   let anyMissing = false;
 
   for (const letter of cw) {
-    const candidates = QUIZ_ORDBANK.filter(w =>
-      w.answer.includes(letter) && !used.has(w.answer)
-    );
+    const candidates = QUIZ_ORDBANK.filter(w => {
+      if (!w.answer.includes(letter)) return false;       // must contain the letter
+      if (used.has(w.answer)) return false;               // no repeats
+      const clueLower = w.clue.toLowerCase();
+      const ansLower  = w.answer.toLowerCase();
+      if (clueLower.includes(ansLower)) return false;     // clue must not contain the answer
+      if (cwLower.length > 2 && clueLower.includes(cwLower)) return false; // clue must not contain the løsningsord
+      return true;
+    });
     if (candidates.length > 0) {
       const pick = candidates[Math.floor(Math.random() * candidates.length)];
       used.add(pick.answer);
