@@ -7422,10 +7422,13 @@ function buildUkensQuizTab() {
       <textarea rows="3" oninput="updateQuizField('greeting',this.value)">${esc(q.greeting)}</textarea>
     </div>
 
-    <div class="form-row" style="max-width:220px;margin-bottom:16px">
+    <div class="form-row" style="margin-bottom:16px">
       <label>Løsningsord</label>
-      <input type="text" value="${esc(q.codeword)}" style="text-transform:uppercase;font-weight:700;letter-spacing:0.08em"
-        onchange="updateQuizCodeword(this.value)">
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" value="${esc(q.codeword)}" style="text-transform:uppercase;font-weight:700;letter-spacing:0.08em;max-width:220px"
+          onchange="updateQuizCodeword(this.value)">
+        <button class="btn btn-sm btn-secondary" onclick="autoGenerateQuizClues()" title="Generer ledetekster automatisk fra ordboken">✨ Auto-generer ledetekster</button>
+      </div>
     </div>
 
     <div class="section-label" style="margin-bottom:10px">Ledetekster (én per bokstav i løsningsordet)</div>
@@ -7486,6 +7489,122 @@ function buildQuizFasitCard(q) {
     <div class="section-label" style="margin-bottom:8px">Sudoku-løsning</div>
     <table style="border-collapse:collapse;margin:4px 0">${solutionRows}</table>` : ''}
   </div>`;
+}
+
+// Word bank for auto-generating clues — answers must contain the target letter.
+// Organised as a flat list; the generator picks randomly from words that contain each letter.
+const QUIZ_ORDBANK = [
+  { clue: 'Svart, varm drikke fra bønner',            answer: 'KAFFE' },
+  { clue: 'Søtt bakverk bakt i ovn',                  answer: 'KAKE' },
+  { clue: 'Hvit drikke fra ku',                       answer: 'MELK' },
+  { clue: 'Gult og søtt smørepålegg fra bier',        answer: 'HONNING' },
+  { clue: 'Sprø, bakt og servert med rømme',          answer: 'VAFFEL' },
+  { clue: 'Varm drikk av blader eller urter',         answer: 'TE' },
+  { clue: 'Søtt og hvitt fra sukkerrør',              answer: 'SUKKER' },
+  { clue: 'Brun og søt fryd fra kakao',               answer: 'SJOKOLADE' },
+  { clue: 'Laget av hvete, bakes i ovn',              answer: 'BRØD' },
+  { clue: 'Ferskt bakverk, rundt og mykt',            answer: 'RUNDSTYKKE' },
+  { clue: 'Gult smør på skiva',                       answer: 'SMØR' },
+  { clue: 'Hvitt og syrlig meieriprodukt',            answer: 'RØMME' },
+  { clue: 'Søtt bærpålegg på glass',                  answer: 'SYLTETØY' },
+  { clue: 'Gult frukt med surt smak',                 answer: 'SITRON' },
+  { clue: 'Rødt bær, populært på kake',               answer: 'JORDBÆR' },
+  { clue: 'Varm og kremet suppeskål',                 answer: 'SUPPE' },
+  { clue: 'Liten, rund og søt – til kaffen',          answer: 'BOLLE' },
+  { clue: 'Norsk ost, gul og fast',                   answer: 'OST' },
+  { clue: 'Hvit og kremet, lages av fløte',           answer: 'KREM' },
+  { clue: 'Sprøtt og salt snacks i pose',             answer: 'CHIPS' },
+  { clue: 'Søtt og klissete, lages av frukt og sukker', answer: 'MARMELADE' },
+  { clue: 'Gult og søtt tropisk frukt',               answer: 'BANAN' },
+  { clue: 'Rød og rund frukt til salater',            answer: 'TOMAT' },
+  { clue: 'Grønn, lang og frisk grønnsak',            answer: 'AGURK' },
+  { clue: 'Kald og boblende leskedrikk',              answer: 'BRUS' },
+  { clue: 'Sprøtt og søtt til kaffen',                answer: 'KJEKS' },
+  { clue: 'Varm drikk av melk og sjokolade',          answer: 'KAKAO' },
+  { clue: 'Nødvendig krydder i all matlaging',        answer: 'SALT' },
+  { clue: 'Varmt og skarpt krydder',                  answer: 'PEPPER' },
+  { clue: 'Liten og rund, kokt eller stekt',          answer: 'EGG' },
+  { clue: 'Lages av mel og vann, stekes tynt',        answer: 'PANNEKAKE' },
+  { clue: 'Norsk julebakst, sprø og krydret',         answer: 'PEPPERKAKE' },
+  { clue: 'Grønn frukt med stein inni',               answer: 'AVOKADO' },
+  { clue: 'Saftige røde bær, vokser vilt',            answer: 'BRINGEBÆR' },
+  { clue: 'Små blå bær fra skogen',                   answer: 'BLÅBÆR' },
+  { clue: 'Norsk ost, brun og søt',                   answer: 'BRUNOST' },
+  { clue: 'Liten, sterk kaffe i liten kopp',          answer: 'ESPRESSO' },
+  { clue: 'Kaffe med dampet melk og sjokolade',       answer: 'MOKKA' },
+  { clue: 'Søt og myk, lages av sukker og eggehvite', answer: 'MARENGS' },
+  { clue: 'Norsk flatbrød, bakt sprøtt',              answer: 'KNEKKEBRØD' },
+  { clue: 'Rød og søt bær til syltetøy',              answer: 'RIPS' },
+  { clue: 'Gul og søt mangofrukt fra tropene',        answer: 'MANGO' },
+  { clue: 'Sprø og søt mandelkake',                   answer: 'MAKRON' },
+  { clue: 'Varm havregrøt til frokost',               answer: 'GRØT' },
+  { clue: 'Søt og kremet vaniljefyll til kaker',      answer: 'VANILJEKREM' },
+  { clue: 'Smalt og langt brød, bakes fersk',         answer: 'BAGUETTE' },
+  { clue: 'Kald og frisk fruktdrikk',                 answer: 'SMOOTHIE' },
+  { clue: 'Havregryn kokt i vann eller melk',         answer: 'HAVREGRØT' },
+  { clue: 'Søt og gul frukt fra tropene',             answer: 'ANANAS' },
+  { clue: 'Stor og grønn sommermelon',                answer: 'VANNMELON' },
+  { clue: 'Liten og søt muffinsform',                 answer: 'MUFFINS' },
+  { clue: 'Brun og seig norsk godbit',                answer: 'KARAMELL' },
+  { clue: 'Hvit og søt mandelmasse',                  answer: 'MARSIPAN' },
+  { clue: 'Tørkede druer, søte og seige',             answer: 'ROSINER' },
+  { clue: 'Kald og søt, vaniljesmak',                 answer: 'ISKREM' },
+  { clue: 'Sprø og søt norsk gjærbakst',              answer: 'KRINGLE' },
+  { clue: 'Søt og myk bolle med syltetøy inni',       answer: 'BERLINERBOLLE' },
+  { clue: 'Kaffe med fløte og mye melkeskum',         answer: 'LATTE' },
+  { clue: 'Kald pressejuice fra appelsin',            answer: 'APPELSINJUICE' },
+  { clue: 'Brun sirup til vafler og pannekaker',      answer: 'SIRUP' },
+  { clue: 'Lett og luftig kake av egg og mel',        answer: 'SUKKERBRØD' },
+  { clue: 'Hvit og syrlig yoghurt',                   answer: 'YOGHURT' },
+  { clue: 'Sprø frukostblanding med melk',            answer: 'MÜSLI' },
+  { clue: 'Bakt potet med sprø skall',                answer: 'POTET' },
+  { clue: 'Norsk fiskepålegg på brød',                answer: 'SARDINER' },
+  { clue: 'Hvit og fast ost fra Italia',              answer: 'MOZZARELLA' },
+  { clue: 'Grønn og bitter bladgrønnsak',             answer: 'SPINAT' },
+  { clue: 'Norsk bær, rød og sur',                    answer: 'TYTTEBÆR' },
+  { clue: 'Kremet hvitost til salater',               answer: 'FETAOST' },
+  { clue: 'Søt og liten – populær på kaffebord',      answer: 'KONFEKT' },
+  { clue: 'Mørk og søt sirup fra roer',               answer: 'MELASSE' },
+  { clue: 'Hvit og latt med bobler',                  answer: 'MINERALVANN' },
+  { clue: 'Røkt og salt fisk, populær til frokost',  answer: 'LAKS' },
+  { clue: 'Søt gelé i porsjonsbeger',                 answer: 'GELATIN' },
+  { clue: 'Nøtteaktig korn, base i mange brød',       answer: 'HVETE' },
+  { clue: 'Frisk og grønn urtedrikk',                 answer: 'MYNTE' },
+  { clue: 'Syrlig og frisk sitrusfrukt',              answer: 'LIME' },
+  { clue: 'Stekt og sprø til frokost',                answer: 'BACON' },
+  { clue: 'Søt og rund norsk julekake',               answer: 'JULEKAKE' },
+  { clue: 'Sterk og aromatisk kaffebønne',            answer: 'ROBUSTA' },
+  { clue: 'Norsk bær med mange frø',                  answer: 'STIKKELSBÆR' },
+  { clue: 'Hvitt og søtt – finnes i glasur',          answer: 'MELIS' },
+  { clue: 'Ferskt brød, laget tidlig om morgenen',   answer: 'FROKOSTBRØD' },
+];
+
+function autoGenerateQuizClues() {
+  const q = getQuizState();
+  const cw = (q.codeword || '').toUpperCase();
+  if (!cw) { showAlert('Skriv inn et løsningsord først', 'error'); return; }
+
+  const used = new Set();
+  const newClues = [];
+  let anyMissing = false;
+
+  for (const letter of cw) {
+    const candidates = QUIZ_ORDBANK.filter(w =>
+      w.answer.includes(letter) && !used.has(w.answer)
+    );
+    if (candidates.length > 0) {
+      const pick = candidates[Math.floor(Math.random() * candidates.length)];
+      used.add(pick.answer);
+      newClues.push({ clue: pick.clue, answer: pick.answer });
+    } else {
+      newClues.push({ clue: '', answer: '' });
+      anyMissing = true;
+    }
+  }
+
+  q.clues = newClues;
+  if (anyMissing) showAlert('Noen bokstaver mangler ord i ordboken — fyll inn manuelt', 'error');
+  renderTab();
 }
 
 function updateQuizField(key, val) { getQuizState()[key] = val; }
