@@ -7116,8 +7116,9 @@ async function buildLojalitetStats() {
   const totalStamps = stamps.length;
   const totalRedeemed = stamps.filter(s => s.redeemed_at).length;
 
-  // Sort customers by total stamps desc
-  const sortedCustomers = Object.entries(byCustomer)
+  // Sort ALL registered customers by stamp count desc (includes 0-stamp customers)
+  const sortedCustomers = customers
+    .map(c => [c.id, byCustomer[c.id] || { total: 0, redeemed: 0 }])
     .sort((a, b) => b[1].total - a[1].total);
 
   const ruleRows = Object.entries(byRule).map(([rid, d]) => `
