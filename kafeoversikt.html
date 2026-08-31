@@ -2780,9 +2780,52 @@ async function buildDagoppgjor() {
   });
 
   return `
+  <div id="pos-hjelp-modal" onclick="if(event.target===this)this.style.display='none'"
+    style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center">
+    <div style="background:var(--card-bg,#fff);border-radius:12px;padding:28px 30px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,0.22);position:relative">
+      <button onclick="document.getElementById('pos-hjelp-modal').style.display='none'"
+        style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--text2,#888)">✕</button>
+      <div style="font-size:1.1rem;font-weight:800;color:#6F4E37;margin-bottom:18px">📋 Oppgjør kassa — fremgangsmåte</div>
+
+      <div style="display:flex;flex-direction:column;gap:14px;font-size:0.92rem;line-height:1.55">
+        <div style="background:#f9f5f2;border-left:3px solid #6F4E37;border-radius:6px;padding:10px 14px">
+          <div style="font-weight:700;color:#6F4E37;margin-bottom:5px">1 · X-rapport</div>
+          <div>☰ → <strong>Rapport</strong> → <strong>Oppgjør</strong> → <strong>Kjør X rapport</strong></div>
+          <div style="margin-top:6px;padding:6px 10px;background:#fff8e1;border-radius:5px;font-size:0.85rem;color:#795548">
+            💡 Tell kassen — skal være <strong>500 kr</strong> i veksel
+          </div>
+        </div>
+
+        <div style="background:#f9f5f2;border-left:3px solid #6F4E37;border-radius:6px;padding:10px 14px">
+          <div style="font-weight:700;color:#6F4E37;margin-bottom:5px">2 · Registrer kontant</div>
+          <div>☰ → <strong>Kontantreg.</strong></div>
+          <div style="margin-top:4px">Skriv inn hele beløpet → Trykk <span style="display:inline-block;background:#c62828;color:#fff;border-radius:4px;padding:0 7px;font-weight:700;font-size:0.82rem">rød knapp</span></div>
+        </div>
+
+        <div style="background:#f9f5f2;border-left:3px solid #6F4E37;border-radius:6px;padding:10px 14px">
+          <div style="font-weight:700;color:#6F4E37;margin-bottom:5px">3 · Z-rapport</div>
+          <div>☰ → <strong>Rapporter</strong> → <strong>Oppgjør</strong> → <strong>Z-rapport</strong></div>
+          <div style="margin-top:4px">Kjør avstemming</div>
+        </div>
+
+        <div style="background:#f9f5f2;border-left:3px solid #6F4E37;border-radius:6px;padding:10px 14px">
+          <div style="font-weight:700;color:#6F4E37;margin-bottom:5px">4 · Avslutt</div>
+          <div>Trykk <strong>X</strong> · Logg ut</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;padding:8px 12px;background:#f3e5f5;border-radius:6px;font-size:0.8rem;color:#6a1b9a">
+        🔐 Brukernavn: <strong>VO</strong> &nbsp;·&nbsp; Passord: <strong>4700</strong>
+      </div>
+    </div>
+  </div>
+
   <div class="card" style="margin-bottom:1rem">
     <div class="card-header">
       <span class="card-title">${isEdit ? '✏️ Rediger dagoppgjør' : '+ Nytt dagoppgjør'}</span>
+      <div class="spacer"></div>
+      <button class="btn btn-sm" style="background:#fff8e1;border-color:#ffe082;color:#e65100;font-weight:600"
+        onclick="const m=document.getElementById('pos-hjelp-modal');m.style.display='flex'">❓ Fremgangsmåte</button>
       ${isEdit ? `<button class="btn btn-sm" onclick="ST._zFormDate=null;renderTab()">Avbryt</button>` : ''}
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:14px">
