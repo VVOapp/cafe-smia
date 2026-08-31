@@ -7135,7 +7135,7 @@ async function buildLojalitetStats() {
       <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center">${d.total}</td>
       <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center;color:#3B6D11;font-weight:600">${d.redeemed}</td>
       <td style="padding:7px 6px;border-bottom:1px solid var(--border);text-align:center">
-        <button class="btn btn-sm btn-danger" onclick="deleteCustomer(${JSON.stringify(id)})">🗑️ Slett</button>
+        <button class="btn btn-sm btn-danger" data-id="${esc(id)}" onclick="promptDeleteCustomer(this)">🗑️ Slett</button>
       </td>
     </tr>`;
   }).join('');
@@ -7181,16 +7181,33 @@ async function buildLojalitetStats() {
   </div>`;
 }
 
-async function deleteCustomer(id) {
-  if (!confirm(`Slett all data for denne kunden?\n\n${id}\n\nDette kan ikke angres.`)) return;
+function promptDeleteCustomer(btn) {
+  const cell = btn.closest('td');
+  const id   = btn.dataset.id;
+  cell.innerHTML = `
+    <span style="font-size:11px;color:var(--text2);margin-right:4px">Sikker?</span>
+    <button class="btn btn-sm btn-danger" data-id="${esc(id)}" onclick="confirmDeleteCustomer(this)" style="margin-right:3px">✓</button>
+    <button class="btn btn-sm" data-id="${esc(id)}" onclick="cancelDeleteCustomer(this)">✕</button>`;
+}
+
+function cancelDeleteCustomer(btn) {
+  const cell = btn.closest('td');
+  const id   = btn.dataset.id;
+  cell.innerHTML = `<button class="btn btn-sm btn-danger" data-id="${esc(id)}" onclick="promptDeleteCustomer(this)">🗑️ Slett</button>`;
+}
+
+async function confirmDeleteCustomer(btn) {
+  const id = btn.dataset.id;
+  btn.disabled = true;
+  btn.textContent = '…';
   try {
     await sbDelete(`loyalty_stamps?customer_id=eq.${encodeURIComponent(id)}`);
     await sbDelete(`loyalty_customers?id=eq.${encodeURIComponent(id)}`);
-    // Remove row from table without full re-render
-    const row = document.getElementById('crow-' + id);
+    const row = btn.closest('tr');
     if (row) row.remove();
   } catch(e) {
-    alert('Feil ved sletting: ' + e.message);
+    btn.closest('td').innerHTML = `<button class="btn btn-sm btn-danger" data-id="${esc(id)}" onclick="promptDeleteCustomer(this)">🗑️ Slett</button>`;
+    showAlert('Feil ved sletting: ' + e.message, 'error');
   }
 }
 
