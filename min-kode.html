@@ -21,6 +21,19 @@ h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 4
 .sub { font-size: 13px; color: var(--text3); margin-bottom: 1.25rem; }
 #qr-box { display: inline-block; padding: 14px; background: white; border-radius: 10px; margin-bottom: 1.25rem; }
 .tip { font-size: 12.5px; color: var(--text2); background: var(--accent-light); border-radius: 8px; padding: 10px 12px; text-align: left; }
+
+/* Promotions */
+.promos { margin-top: 1.5rem; text-align: left; }
+.promos-heading { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
+.promo-item { background: var(--bg2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+.promo-item:last-child { margin-bottom: 0; }
+.promo-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
+.dots { font-size: 20px; letter-spacing: 3px; margin: 4px 0 2px; line-height: 1; }
+.dot-filled { color: var(--accent); }
+.dot-empty { color: var(--border); filter: contrast(3); }
+.promo-status { font-size: 12px; color: var(--text2); margin-top: 3px; }
+.reward-banner { background: linear-gradient(135deg, #3B6D11, #5a9e1f); color: white; border-radius: 8px; padding: 8px 12px; font-weight: 700; font-size: 13px; text-align: center; margin-top: 6px; }
+.promos-loading { font-size: 13px; color: var(--text3); text-align: center; padding: 12px 0; }
 </style>
 </head>
 <body>
@@ -29,11 +42,29 @@ h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 4
   <h1>Din lojalitetskode</h1>
   <p class="sub">Vis denne koden i kassen når du bestiller</p>
   <div id="qr-box"></div>
-  <div class="tip">💡 Ta et skjermbilde av koden, så har du den lett tilgjengelig neste gang. Ingen registrering — koden er anonym.</div>
+  <div class="tip">💡 Koden lagres automatisk på denne enheten — bare skann kampanjeplakaten på nytt så er du tilbake. Ingen registrering nødvendig.</div>
+
+  <div class="promos" id="promos" style="display:none">
+    <div class="promos-heading">Pågående tilbud</div>
+    <div id="promos-list"><div class="promos-loading">Laster tilbud…</div></div>
+  </div>
 </div>
+
 <script>
-// Anonymous loyalty token — persisted locally on this device so returning
-// to this page always shows the SAME code (never overwrite an existing one).
+const SUPABASE_URL = 'https://kvtugiflpxehytpplkqw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
+
+async function sbGet(path) {
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch(e) { return []; }
+}
+
+// ── Stable anonymous code ──────────────────────────────────────────────
 function uuid() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -42,16 +73,55 @@ function uuid() {
   });
 }
 let code = localStorage.getItem('smia_loyalty_id');
-if (!code) {
-  code = uuid();
-  localStorage.setItem('smia_loyalty_id', code);
-}
+if (!code) { code = uuid(); localStorage.setItem('smia_loyalty_id', code); }
+
 new QRCode(document.getElementById('qr-box'), {
-  text: code,
-  width: 220,
-  height: 220,
-  correctLevel: QRCode.CorrectLevel.M
+  text: code, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M
 });
+
+// ── Load promotions + personal progress ───────────────────────────────
+async function loadPromos() {
+  const [rules, products, stamps] = await Promise.all([
+    sbGet('loyalty_rules?active=eq.true&select=*&order=id'),
+    sbGet('cafe_products?select=id,name'),
+    sbGet('loyalty_stamps?customer_id=eq.' + encodeURIComponent(code) + '&redeemed_at=is.null&select=rule_id')
+  ]);
+
+  if (!rules.length) return; // no active promotions — keep section hidden
+
+  const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+  const countByRule = {};
+  for (const s of stamps) countByRule[s.rule_id] = (countByRule[s.rule_id] || 0) + 1;
+
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  const html = rules.map(r => {
+    const name = esc(nameById[r.cafe_product_id] || 'Produkt');
+    const count = countByRule[r.id] || 0;
+    const need  = r.stamps_required;
+    const ready = count >= need;
+
+    const dots = Array.from({ length: need }, (_, i) =>
+      `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">●</span>`
+    ).join('');
+
+    return `
+    <div class="promo-item">
+      <div class="promo-name">${name}</div>
+      <div class="dots">${dots}</div>
+      ${ready
+        ? `<div class="reward-banner">🎉 Gratis ${name} opptjent!</div>
+           <div class="promo-status" style="margin-top:6px">Vis koden i kassen for å løse inn premien</div>`
+        : `<div class="promo-status">${count} av ${need} kjøp — ${need - count} igjen til gratis ${name}</div>`
+      }
+    </div>`;
+  }).join('');
+
+  document.getElementById('promos-list').innerHTML = html;
+  document.getElementById('promos').style.display = '';
+}
+
+loadPromos();
 </script>
 </body>
 </html>
