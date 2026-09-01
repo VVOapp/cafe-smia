@@ -9,45 +9,125 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --bg: #ffffff; --bg2: #f5f3f0; --text: #1a1a18; --text2: #6b6a66; --text3: #a09f9b;
-  --border: rgba(0,0,0,0.1); --radius: 14px; --accent: #6F4E37; --accent-light: #f5ede8;
+  --border: rgba(0,0,0,0.1); --radius: 14px;
+  --accent: #6F4E37; --accent-light: #f5ede8; --accent-border: #d4a882;
+  --green: #3A5C38; --green-light: #edf4ec;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg:#1c1c1a; --bg2:#252523; --text:#f0efe9; --text2:#9e9d99; --text3:#6b6a66; --border:rgba(255,255,255,0.1); --accent-light:#2e2118; }
+  :root {
+    --bg:#1c1c1a; --bg2:#252523; --text:#f0efe9; --text2:#9e9d99; --text3:#6b6a66;
+    --border:rgba(255,255,255,0.1); --accent-light:#2e2118; --accent-border:#7a5c44;
+    --green-light:#1a2e1a;
+  }
 }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; line-height: 1.5; }
-.card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem 1.5rem; max-width: 360px; width: 100%; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
-.logo { font-size: 2.2rem; margin-bottom: 4px; }
-h1 { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
-.sub { font-size: 13px; color: var(--text3); margin-bottom: 1.25rem; }
-#qr-box { display: inline-block; padding: 14px; background: white; border-radius: 10px; margin-bottom: 1.25rem; }
-.tip { font-size: 12.5px; color: var(--text2); background: var(--accent-light); border-radius: 8px; padding: 10px 12px; text-align: left; }
 
-/* Promotions */
-.promos { margin-top: 1.5rem; text-align: left; }
-.promos-heading { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
-.promo-item { background: var(--bg2); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg2); color: var(--text);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem; line-height: 1.5;
+}
+
+.card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  max-width: 360px; width: 100%;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1); overflow: hidden;
+}
+
+/* ── Branded header ── */
+.card-header {
+  background: var(--accent);
+  padding: 1.25rem 1.5rem 1rem;
+  text-align: center;
+  position: relative;
+}
+.card-header .cafe-name {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: rgba(255,255,255,0.65); margin-bottom: 2px;
+}
+.card-header h1 {
+  font-size: 1.25rem; font-weight: 700; color: #ffffff;
+}
+.card-header .sub {
+  font-size: 12.5px; color: rgba(255,255,255,0.6); margin-top: 3px;
+}
+
+/* ── QR section ── */
+.card-body { padding: 1.5rem; text-align: center; }
+#qr-box {
+  display: inline-block; padding: 14px; background: white;
+  border-radius: 10px; margin-bottom: 1.25rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.tip {
+  font-size: 12px; color: var(--text2); background: var(--accent-light);
+  border: 1px solid var(--accent-border); border-radius: 8px;
+  padding: 10px 12px; text-align: left;
+}
+
+/* ── Promotions ── */
+.promos { padding: 0 1.5rem 1.5rem; }
+
+.promos-header {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--green); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 10px;
+}
+.promos-header span { font-size: 16px; }
+.promos-header strong {
+  font-size: 13px; font-weight: 700; color: #ffffff;
+  letter-spacing: 0.02em;
+}
+
+.promo-item {
+  background: var(--green-light);
+  border: 1px solid rgba(58,92,56,0.2);
+  border-left: 4px solid var(--green);
+  border-radius: 0 10px 10px 0;
+  padding: 12px 14px; margin-bottom: 8px;
+}
 .promo-item:last-child { margin-bottom: 0; }
-.promo-name { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 5px; }
-.dots { font-size: 20px; letter-spacing: 3px; margin: 4px 0 2px; line-height: 1; }
-.dot-filled { color: var(--accent); }
-.dot-empty { color: var(--border); filter: contrast(3); }
-.promo-status { font-size: 12px; color: var(--text2); margin-top: 3px; }
-.reward-banner { background: linear-gradient(135deg, #3B6D11, #5a9e1f); color: white; border-radius: 8px; padding: 8px 12px; font-weight: 700; font-size: 13px; text-align: center; margin-top: 6px; }
-.promos-loading { font-size: 13px; color: var(--text3); text-align: center; padding: 12px 0; }
+.promo-name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.dots { font-size: 22px; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
+.dot-filled { color: var(--green); }
+.dot-empty { color: rgba(0,0,0,0.15); }
+@media (prefers-color-scheme: dark) {
+  .dot-empty { color: rgba(255,255,255,0.15); }
+}
+.promo-status { font-size: 12px; color: var(--text2); }
+.reward-banner {
+  background: linear-gradient(135deg, #3B6D11, #5a9e1f);
+  color: white; border-radius: 8px; padding: 8px 12px;
+  font-weight: 700; font-size: 13px; text-align: center; margin-top: 6px;
+}
+.promos-loading { font-size: 13px; color: var(--text3); text-align: center; padding: 8px 0; }
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">☕</div>
-  <h1>Din lojalitetskode</h1>
-  <p class="sub">Vis denne koden i kassen når du bestiller</p>
-  <div id="qr-box"></div>
-  <div class="tip">💡 Koden lagres automatisk på denne enheten — bare skann kampanjeplakaten på nytt så er du tilbake. Ingen registrering nødvendig.</div>
 
-  <div class="promos" id="promos" style="display:none">
-    <div class="promos-heading">Pågående tilbud</div>
-    <div id="promos-list"><div class="promos-loading">Laster tilbud…</div></div>
+  <!-- Header -->
+  <div class="card-header">
+    <div class="cafe-name">Smia Kafé</div>
+    <h1>☕ Din lojalitetskode</h1>
+    <div class="sub">Vis koden i kassen når du bestiller</div>
   </div>
+
+  <!-- QR code -->
+  <div class="card-body">
+    <div id="qr-box"></div>
+    <div class="tip">💡 Koden lagres automatisk på denne enheten — bare skann plakaten på nytt så er du tilbake. Ingen registrering nødvendig.</div>
+  </div>
+
+  <!-- Promotions -->
+  <div class="promos" id="promos" style="display:none">
+    <div class="promos-header">
+      <span>🎁</span>
+      <strong>Pågående tilbud</strong>
+    </div>
+    <div id="promos-list"><div class="promos-loading">Laster…</div></div>
+  </div>
+
 </div>
 
 <script>
@@ -64,7 +144,7 @@ async function sbGet(path) {
   } catch(e) { return []; }
 }
 
-// ── Stable anonymous code ──────────────────────────────────────────────
+// Stable anonymous code
 function uuid() {
   if (crypto.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -79,7 +159,7 @@ new QRCode(document.getElementById('qr-box'), {
   text: code, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M
 });
 
-// ── Load promotions + personal progress ───────────────────────────────
+// Load promotions + personal progress
 async function loadPromos() {
   const [rules, products, stamps] = await Promise.all([
     sbGet('loyalty_rules?active=eq.true&select=*&order=id'),
@@ -87,21 +167,19 @@ async function loadPromos() {
     sbGet('loyalty_stamps?customer_id=eq.' + encodeURIComponent(code) + '&redeemed_at=is.null&select=rule_id')
   ]);
 
-  if (!rules.length) return; // no active promotions — keep section hidden
+  if (!rules.length) return;
 
   const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
   const countByRule = {};
   for (const s of stamps) countByRule[s.rule_id] = (countByRule[s.rule_id] || 0) + 1;
-
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-  const html = rules.map(r => {
-    const name = esc(nameById[r.cafe_product_id] || 'Produkt');
+  document.getElementById('promos-list').innerHTML = rules.map(r => {
+    const name  = esc(nameById[r.cafe_product_id] || 'Produkt');
     const count = countByRule[r.id] || 0;
     const need  = r.stamps_required;
     const ready = count >= need;
-
-    const dots = Array.from({ length: need }, (_, i) =>
+    const dots  = Array.from({length: need}, (_, i) =>
       `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">●</span>`
     ).join('');
 
@@ -110,14 +188,12 @@ async function loadPromos() {
       <div class="promo-name">${name}</div>
       <div class="dots">${dots}</div>
       ${ready
-        ? `<div class="reward-banner">🎉 Gratis ${name} opptjent!</div>
-           <div class="promo-status" style="margin-top:6px">Vis koden i kassen for å løse inn premien</div>`
+        ? `<div class="reward-banner">🎉 Gratis ${name} opptjent! Vis koden i kassen.</div>`
         : `<div class="promo-status">${count} av ${need} kjøp — ${need - count} igjen til gratis ${name}</div>`
       }
     </div>`;
   }).join('');
 
-  document.getElementById('promos-list').innerHTML = html;
   document.getElementById('promos').style.display = '';
 }
 
