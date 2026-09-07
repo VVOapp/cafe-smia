@@ -7388,6 +7388,9 @@ async function ensureQuizLoaded() {
 
 async function saveWeeklyQuiz(showSuccessAlert = true) {
   const q = getQuizState();
+  // Record answers to history so they won't repeat next week
+  const answersThisWeek = q.clues.map(c => c.answer).filter(Boolean);
+  if (answersThisWeek.length) addToQuizHistory(answersThisWeek);
   try {
     await sbFetch('weekly_quiz?on_conflict=slug', {
       method: 'POST',
@@ -7529,6 +7532,8 @@ function buildUkensQuizTab() {
           oninput="updateQuizClue(${i},'answer',this.value);updateQuizHint(${i})">
         <div id="quiz-hint-${i}" style="font-size:11px;margin-top:3px;min-height:14px">${quizHintHtml(row.answer, letter)}</div>
       </div>
+      <button class="btn btn-sm btn-secondary" style="padding:6px 8px;margin-top:1px" title="Generer nytt spørsmål for denne bokstaven"
+        onclick="regenQuizClue(${i})">🔄</button>
     </div>`;
   }).join('');
 
@@ -7575,6 +7580,7 @@ function buildUkensQuizTab() {
         <input type="text" value="${esc(q.codeword)}" style="text-transform:uppercase;font-weight:700;letter-spacing:0.08em;max-width:220px"
           onchange="updateQuizCodeword(this.value)">
         <button class="btn btn-sm btn-secondary" onclick="autoGenerateQuizClues()" title="Generer ledetekster automatisk fra ordboken">✨ Auto-generer ledetekster</button>
+        <button class="btn btn-sm" onclick="clearQuizHistory()" title="Nullstill historikk — alle spørsmål blir tilgjengelige igjen" style="font-size:11px;color:var(--text2)">🗑️ Nullstill historikk</button>
       </div>
     </div>
 
@@ -7822,30 +7828,61 @@ const QUIZ_ORDBANK = [
   { clue: 'Instrument som måler temperatur i grader',                 answer: 'TERMOMETER' },
 ];
 
+// ── Quiz answer history (persisted in localStorage) ──────────────────────────
+// Stores answers used in previous weeks so they won't repeat.
+const QUIZ_HISTORY_KEY = 'smia_quiz_used_answers';
+
+function getQuizHistory() {
+  try { return new Set(JSON.parse(localStorage.getItem(QUIZ_HISTORY_KEY) || '[]')); }
+  catch(e) { return new Set(); }
+}
+
+function addToQuizHistory(answers) {
+  const h = getQuizHistory();
+  for (const a of answers) h.add(a.toUpperCase());
+  try { localStorage.setItem(QUIZ_HISTORY_KEY, JSON.stringify([...h])); } catch(e) {}
+}
+
+function clearQuizHistory() {
+  localStorage.removeItem(QUIZ_HISTORY_KEY);
+  showAlert('Quizhistorikk nullstilt — alle spørsmål er tilgjengelige igjen');
+}
+
+// Shared candidate-filter used by both full regen and single-row regen
+function quizCandidatesForLetter(letter, excludeAnswers, cwLower) {
+  return QUIZ_ORDBANK.filter(w => {
+    if (!w.answer.includes(letter)) return false;
+    if (excludeAnswers.has(w.answer)) return false;
+    const clueLower = w.clue.toLowerCase();
+    const ansLower  = w.answer.toLowerCase();
+    if (clueLower.includes(ansLower)) return false;
+    if (ansLower === cwLower) return false;
+    if (cwLower.length > 2 && clueLower.includes(cwLower)) return false;
+    return true;
+  });
+}
+
 function autoGenerateQuizClues() {
   const q = getQuizState();
   const cw = (q.codeword || '').toUpperCase();
   if (!cw) { showAlert('Skriv inn et løsningsord først', 'error'); return; }
 
   const cwLower = cw.toLowerCase();
-  const used = new Set();
+  const history = getQuizHistory();       // answers used in previous weeks
+  const usedThisRun = new Set();          // answers used within this quiz
   const newClues = [];
   let anyMissing = false;
 
   for (const letter of cw) {
-    const candidates = QUIZ_ORDBANK.filter(w => {
-      if (!w.answer.includes(letter)) return false;       // must contain the letter
-      if (used.has(w.answer)) return false;               // no repeats
-      const clueLower = w.clue.toLowerCase();
-      const ansLower  = w.answer.toLowerCase();
-      if (clueLower.includes(ansLower)) return false;     // clue must not contain the answer
-      if (ansLower === cwLower) return false;             // answer must not BE the løsningsord
-      if (cwLower.length > 2 && clueLower.includes(cwLower)) return false; // clue must not contain the løsningsord
-      return true;
-    });
+    const exclude = new Set([...history, ...usedThisRun]);
+    let candidates = quizCandidatesForLetter(letter, exclude, cwLower);
+    // If history has exhausted options for this letter, fall back without history filter
+    if (candidates.length === 0) {
+      candidates = quizCandidatesForLetter(letter, usedThisRun, cwLower);
+    }
     if (candidates.length > 0) {
       const pick = candidates[Math.floor(Math.random() * candidates.length)];
-      used.add(pick.answer);
+      usedThisRun.add(pick.answer);
       newClues.push({ clue: pick.clue, answer: pick.answer });
     } else {
       newClues.push({ clue: '', answer: '' });
@@ -7855,6 +7892,32 @@ function autoGenerateQuizClues() {
 
   q.clues = newClues;
   if (anyMissing) showAlert('Noen bokstaver mangler ord i ordboken — fyll inn manuelt', 'error');
+  renderTab();
+}
+
+// Re-roll a single clue row without touching the others
+function regenQuizClue(i) {
+  const q = getQuizState();
+  const cw = (q.codeword || '').toUpperCase();
+  const letter = cw[i];
+  if (!letter) return;
+
+  const cwLower   = cw.toLowerCase();
+  const history   = getQuizHistory();
+  // Exclude answers already used elsewhere in this quiz (except the current slot)
+  const usedNow   = new Set(q.clues.filter((_, j) => j !== i).map(c => c.answer).filter(Boolean));
+  const exclude   = new Set([...history, ...usedNow]);
+
+  let candidates = quizCandidatesForLetter(letter, exclude, cwLower);
+  // Fall back without history if exhausted
+  if (candidates.length === 0) candidates = quizCandidatesForLetter(letter, usedNow, cwLower);
+
+  if (candidates.length === 0) {
+    showAlert(`Ingen flere spørsmål tilgjengelig for bokstaven «${letter}»`, 'error');
+    return;
+  }
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  q.clues[i] = { clue: pick.clue, answer: pick.answer };
   renderTab();
 }
 
