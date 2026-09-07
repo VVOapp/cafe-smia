@@ -6,7 +6,7 @@
   <title>Bestillingsforespørsel – SMIA Kafé</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;1,400;1,600&family=Lora:ital@0;1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Playfair+Display:wght@700&family=Lora:ital@0;1&display=swap" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2032%2032%27%3E%3Crect%20width=%2732%27%20height=%2732%27%20rx=%276%27%20fill=%27%233A5C38%27/%3E%3Cpath%20d=%27M16,31%20C15,24%2017,17%2014,11%20C12,6%2015,2%2014,0%27%20stroke=%27white%27%20stroke-width=%271.8%27%20fill=%27none%27%20stroke-linecap=%27round%27/%3E%3Cellipse%20cx=%2710%27%20cy=%2725%27%20rx=%275.5%27%20ry=%273.2%27%20transform=%27rotate(-35%2010%2025)%27%20fill=%27white%27/%3E%3Cellipse%20cx=%2722%27%20cy=%2721%27%20rx=%275.5%27%20ry=%273.2%27%20transform=%27rotate(25%2022%2021)%27%20fill=%27white%27/%3E%3Cellipse%20cx=%2710%27%20cy=%2717%27%20rx=%275%27%20ry=%273%27%20transform=%27rotate(-40%2010%2017)%27%20fill=%27white%27/%3E%3Cellipse%20cx=%2721%27%20cy=%2713%27%20rx=%274.5%27%20ry=%272.8%27%20transform=%27rotate(30%2021%2013)%27%20fill=%27white%27/%3E%3Cellipse%20cx=%2711%27%20cy=%279%27%20rx=%274%27%20ry=%272.3%27%20transform=%27rotate(-35%2011%209)%27%20fill=%27white%27/%3E%3Cellipse%20cx=%2720%27%20cy=%275%27%20rx=%273.5%27%20ry=%272%27%20transform=%27rotate(20%2020%205)%27%20fill=%27white%27/%3E%3C/svg%3E">
   <script>
     // ── Web3Forms config ──
@@ -15,9 +15,17 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --cream: #f5f0e6;
+      --teal: #2a6b5e;
+      --teal-dark: #1a4235;
+      --teal-light: #ddeee8;
+      --teal-mid: #c4ddd5;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f5f7f5;
+      background: var(--cream);
       color: #222;
       min-height: 100vh;
     }
@@ -28,78 +36,202 @@
       padding: 0 0 48px;
     }
 
-    /* ── Hero header ── */
+    /* ── Hero: photo with title overlay ── */
     .hero {
-      background: linear-gradient(160deg, #2d5a2b 0%, #3A5C38 60%, #4a7a47 100%);
-      padding: 36px 24px 28px;
+      position: relative;
+      height: 260px;
+      overflow: hidden;
+    }
+    .hero-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 35%;
+      display: block;
+    }
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(26,66,53,0.45) 0%, rgba(26,66,53,0.15) 50%, rgba(26,66,53,0.6) 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 22px;
       text-align: center;
-      color: white;
     }
-    .hero .logo { font-size: 3rem; margin-bottom: 10px; }
-    .hero h1 {
-      font-size: 2rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      margin-bottom: 4px;
-    }
-    .hero .tagline {
-      font-size: 0.85rem;
-      opacity: 0.75;
-      letter-spacing: 0.05em;
+    .hero-title {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 2.1rem;
+      font-weight: 700;
+      color: #ffffff;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+    .hero-sub {
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.82);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+    /* Eucalyptus sprigs top-right (SVG inline) */
+    .hero-sprig {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      opacity: 0.88;
+      pointer-events: none;
+    }
+    .hero-sprig-left {
+      position: absolute;
+      top: -6px;
+      left: -6px;
+      opacity: 0.88;
+      pointer-events: none;
+      transform: scaleX(-1);
     }
 
     /* ── About card ── */
     .about-card {
-      background: white;
-      margin: 0 16px;
-      margin-top: -18px;
-      border-radius: 14px;
+      background: #faf7f2;
+      margin: 0 14px;
+      margin-top: -14px;
+      border-radius: 18px;
       overflow: hidden;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
+      box-shadow: 0 6px 24px rgba(26,66,53,0.13);
+      margin-bottom: 18px;
+      position: relative;
     }
-    .about-photo {
-      width: 100%;
-      height: 210px;
-      object-fit: cover;
-      object-position: center 40%;
-      display: block;
+    /* Brush-stroke headline block */
+    .about-headline-wrap {
+      padding: 24px 24px 0;
+      position: relative;
     }
-    .about-text {
-      padding: 20px 22px;
+    .about-headline {
+      font-family: 'Dancing Script', cursive;
+      font-size: 2.1rem;
+      font-weight: 700;
+      color: var(--teal-dark);
+      line-height: 1.2;
+      position: relative;
+      display: inline-block;
     }
-    .about-lead {
-      font-family: 'Playfair Display', Georgia, serif;
-      font-size: 1.25rem;
-      font-style: italic;
-      font-weight: 600;
-      color: #2d5a2b;
-      margin-bottom: 12px;
-      line-height: 1.35;
+    .about-headline::after {
+      content: '';
+      position: absolute;
+      inset: -10px -18px;
+      background: var(--teal-light);
+      border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
+      z-index: -1;
+      transform: rotate(-1.5deg);
     }
-    .about-text p {
+    /* Coffee cup decorative */
+    .about-cup {
+      position: absolute;
+      top: 18px;
+      right: 22px;
+      font-size: 2.4rem;
+      opacity: 0.18;
+    }
+    /* Icon + text rows */
+    .about-items {
+      padding: 22px 22px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .about-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding-bottom: 14px;
+    }
+    .about-icon {
+      width: 42px;
+      height: 42px;
+      background: var(--teal-mid);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .about-item p {
       font-family: 'Lora', Georgia, serif;
-      font-size: 0.92rem;
-      color: #444;
-      line-height: 1.7;
-      margin-bottom: 10px;
+      font-size: 0.9rem;
+      color: #3a3a36;
+      line-height: 1.65;
+      margin: 0;
+      padding-top: 9px;
     }
-    .about-text p:last-child {
-      margin-bottom: 0;
-      color: #2e7d32;
+    .about-divider {
+      text-align: center;
+      color: var(--teal-mid);
+      font-size: 0.9rem;
+      margin-bottom: 14px;
+      letter-spacing: 8px;
+    }
+    /* CTA highlight row */
+    .about-cta {
+      margin: 6px 22px 0;
+      background: var(--teal-light);
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .about-cta-icon {
+      width: 42px;
+      height: 42px;
+      background: var(--teal);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      color: white;
+    }
+    .about-cta p {
+      font-family: 'Lora', Georgia, serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--teal-dark);
+      line-height: 1.5;
+      margin: 0;
+    }
+    /* Welcome footer */
+    .about-welcome {
+      text-align: center;
+      font-family: 'Dancing Script', cursive;
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: var(--teal);
+      padding: 16px 22px 20px;
+    }
+    .about-welcome-sub {
+      text-align: center;
+      font-family: 'Lora', Georgia, serif;
+      font-size: 0.82rem;
       font-style: italic;
-      font-weight: 400;
+      color: #888;
+      margin-top: -8px;
+      padding-bottom: 20px;
     }
 
     /* ── Form wrapper ── */
     .form-wrap { padding: 0 16px; }
 
     .card {
-      background: white;
+      background: #faf7f2;
       border-radius: 12px;
       padding: 22px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(26,66,53,0.08);
       margin-bottom: 16px;
     }
 
@@ -117,10 +249,10 @@
 
     /* ── People count ── */
     .people-card {
-      background: linear-gradient(135deg, #f0f7f0, #e8f5e8);
-      border: 2px solid #c8e6c9;
+      background: linear-gradient(135deg, #edf6f3, #ddeee8);
+      border: 2px solid var(--teal-mid);
     }
-    .people-card h2 { border-bottom-color: #c8e6c9; color: #2e7d32; }
+    .people-card h2 { border-bottom-color: var(--teal-mid); color: var(--teal); }
     .people-input-wrap {
       display: flex;
       align-items: center;
@@ -227,7 +359,7 @@
       width: 22px;
       height: 22px;
       cursor: pointer;
-      accent-color: #2e7d32;
+      accent-color: var(--teal);
       flex-shrink: 0;
     }
     .product-row .prod-label {
@@ -307,7 +439,7 @@
     .submit-btn {
       width: 100%;
       padding: 15px;
-      background: #2e7d32;
+      background: var(--teal);
       color: white;
       border: none;
       border-radius: 10px;
@@ -318,7 +450,7 @@
       letter-spacing: 0.01em;
       margin-top: 4px;
     }
-    .submit-btn:hover { background: #1b5e20; }
+    .submit-btn:hover { background: var(--teal-dark); }
     .submit-btn:active { transform: scale(0.98); }
     .submit-btn:disabled { background: #a5d6a7; cursor: not-allowed; transform: none; }
 
@@ -373,23 +505,66 @@
 <body>
 <div class="page">
 
-  <!-- Hero -->
+  <!-- Hero: photo with title overlay + eucalyptus sprigs -->
   <div class="hero">
-    <div class="logo">☕</div>
-    <h1>Smia Kafé</h1>
-    <div class="tagline">Vennesla Voksenopplæring</div>
+    <img src="cafe-counter.jpg" class="hero-photo" alt="Smia Kafé">
+    <!-- Top-right sprig -->
+    <svg class="hero-sprig" width="110" height="120" viewBox="0 0 110 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M55 115 C52 90 62 68 50 45 C42 28 52 8 50 0" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <ellipse cx="34" cy="100" rx="14" ry="8" transform="rotate(-40 34 100)" fill="white" opacity="0.7"/>
+      <ellipse cx="68" cy="88"  rx="14" ry="8" transform="rotate(30 68 88)"   fill="white" opacity="0.7"/>
+      <ellipse cx="32" cy="76"  rx="13" ry="7" transform="rotate(-45 32 76)"  fill="white" opacity="0.65"/>
+      <ellipse cx="66" cy="62"  rx="12" ry="7" transform="rotate(35 66 62)"   fill="white" opacity="0.65"/>
+      <ellipse cx="36" cy="50"  rx="11" ry="6" transform="rotate(-38 36 50)"  fill="white" opacity="0.6"/>
+      <ellipse cx="62" cy="36"  rx="10" ry="6" transform="rotate(28 62 36)"   fill="white" opacity="0.6"/>
+    </svg>
+    <!-- Top-left sprig (mirrored) -->
+    <svg class="hero-sprig-left" width="110" height="120" viewBox="0 0 110 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M55 115 C52 90 62 68 50 45 C42 28 52 8 50 0" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <ellipse cx="34" cy="100" rx="14" ry="8" transform="rotate(-40 34 100)" fill="white" opacity="0.7"/>
+      <ellipse cx="68" cy="88"  rx="14" ry="8" transform="rotate(30 68 88)"   fill="white" opacity="0.7"/>
+      <ellipse cx="32" cy="76"  rx="13" ry="7" transform="rotate(-45 32 76)"  fill="white" opacity="0.65"/>
+      <ellipse cx="66" cy="62"  rx="12" ry="7" transform="rotate(35 66 62)"   fill="white" opacity="0.65"/>
+      <ellipse cx="36" cy="50"  rx="11" ry="6" transform="rotate(-38 36 50)"  fill="white" opacity="0.6"/>
+      <ellipse cx="62" cy="36"  rx="10" ry="6" transform="rotate(28 62 36)"   fill="white" opacity="0.6"/>
+    </svg>
+    <div class="hero-overlay">
+      <div class="hero-title">Café Smia</div>
+      <div class="hero-sub">Vennesla Voksenopplæring</div>
+    </div>
   </div>
 
-  <!-- About -->
+  <!-- About card -->
   <div class="about-card">
-    <img src="cafe-counter.jpg" class="about-photo" alt="Smia Kafé — disken">
-    <div class="about-text">
-      <p class="about-lead">Smia er mer enn en kafé</p>
-      <p>Hos oss kan du nyte en kopp kaffe, noe godt å spise og et hyggelig møte med mennesker.</p>
-      <p>Smia drives av Vennesla Voksenopplæring og er en viktig læringsarena for deltakere som ønsker å utvikle språk, arbeidslivserfaring og nye ferdigheter gjennom praktisk arbeid i kaféen.</p>
-      <p>Her møtes mennesker, kulturer og erfaringer rundt et felles bord — hver dag øver vi på samarbeid, service og kommunikasjon i et ekte arbeidsmiljø.</p>
-      <p>Når du handler hos oss, støtter du læring, inkludering og fellesskap. 💚</p>
+    <div class="about-cup">☕</div>
+    <div class="about-headline-wrap">
+      <div class="about-headline">Smia er mer enn en kafé</div>
     </div>
+
+    <div class="about-items">
+      <div class="about-item">
+        <div class="about-icon">☕</div>
+        <p>Hos oss kan du nyte en kopp kaffe, noe godt å spise og et hyggelig møte med mennesker.</p>
+      </div>
+      <div class="about-divider">· · ♥ · ·</div>
+      <div class="about-item">
+        <div class="about-icon">📖</div>
+        <p>Smia drives av Vennesla Voksenopplæring og er en viktig læringsarena for deltakere som ønsker å utvikle språk, arbeidslivserfaring og nye ferdigheter gjennom praktisk arbeid i kaféen.</p>
+      </div>
+      <div class="about-divider">· · ♥ · ·</div>
+      <div class="about-item">
+        <div class="about-icon">🤝</div>
+        <p>Her møtes mennesker, kulturer og erfaringer rundt et felles bord — hver dag øver vi på samarbeid, service og kommunikasjon i et ekte arbeidsmiljø.</p>
+      </div>
+    </div>
+
+    <div class="about-cta">
+      <div class="about-cta-icon">💚</div>
+      <p>Når du handler hos oss, støtter du læring, inkludering og fellesskap.</p>
+    </div>
+
+    <div class="about-welcome">Velkommen inn!</div>
+    <div class="about-welcome-sub">Takk for at du besøker Smia</div>
   </div>
 
   <!-- Success screen (hidden until submit) -->
