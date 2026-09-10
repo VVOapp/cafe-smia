@@ -447,6 +447,24 @@ function buildCanteen(){
       });
     }
     if(pending.length===0&&active.length===0)html+='<div class="empty">Ingen ventende bestillinger.<br><small>Trykk Oppdater hvis du venter p\xe5 noe.</small></div>';
+    if(history.length>0){
+      const recent=history.slice(0,5);
+      html+='<p class="section-label" style="margin-top:1.5rem;opacity:0.6">Nylig levert</p>';
+      recent.forEach(function(o){
+        html+='<div class="card" style="opacity:0.55">';
+        html+='<div class="card-header"><span class="card-title">Bestilling #'+o.id+' — '+weekLabel(o.week)+'</span><span class="badge badge-delivered">levert</span><div class="spacer"></div><button class="btn btn-sm" onclick="reopenOrder('+o.id+')" style="font-size:11px">↩ Gjenåpne</button></div>';
+        html+='<table><thead><tr><th>Produkt</th><th>Dag</th><th>Ant.</th></tr></thead><tbody>';
+        (o.items||[]).forEach(function(i){
+          const p=getProd(i.pid);if(!p)return;
+          if(i.splits&&i.splits.length>0){
+            i.splits.forEach(function(sp,idx){html+='<tr><td style="color:var(--text2)">'+(idx===0?p.name:'↳')+'</td><td style="color:var(--text3)">'+sp.day+'</td><td style="color:var(--text2)">'+fmtQty(sp.qty)+'&nbsp;'+p.unit+'</td></tr>';});
+          } else {
+            html+='<tr><td style="color:var(--text2)">'+p.name+'</td><td></td><td style="color:var(--text2)">'+fmtQty(i.qty)+'&nbsp;'+p.unit+'</td></tr>';
+          }
+        });
+        html+='</tbody></table></div>';
+      });
+    }
     return html;
   }
 
@@ -1014,13 +1032,22 @@ async function togglePickup(orderId,key){
   if(key in cl){delete cl[key];}else{cl[key]=today;}
   const allKeys=allCheckKeys(o);
   const allDone=allKeys.length>0&&allKeys.every(function(k){return k in cl;});
-  const update=allDone?{checklist:cl,status:"delivered"}:{checklist:cl};
+  // Save checklist update first (without changing status)
   try{
-    await db.updateOrder(orderId,update);
-    await loadAll();
-    if(allDone)showAlert("Alle varer hentet \u2014 bestilling markert som levert!");
+    await db.updateOrder(orderId,{checklist:cl});
+    o.checklist=cl;
+    render();
+    // If all done, ask for explicit confirmation before marking delivered
+    if(allDone){
+      if(confirm("Alle varer er haket av.\nMerk bestilling #"+orderId+" som levert?")){
+        await db.updateOrder(orderId,{status:"delivered"});
+        await loadAll();
+        showAlert("Bestilling #"+orderId+" markert som levert!");
+      }
+    }
   }catch(e){showAlert("Feil: "+e.message,"error");}
 }
+async function reopenOrder(id){if(!confirm("Gjen\u00e5pne bestilling #"+id+"?"))return;try{await db.updateOrder(id,{status:"accepted"});await loadAll();showAlert("Bestilling #"+id+" gjen\u00e5pnet.");}catch(e){showAlert("Feil: "+e.message,"error");}}
 
 async function saveItemNote(orderId,key,value){
   const o=S.orders.find(function(x){return x.id===orderId;});if(!o)return;
