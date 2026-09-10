@@ -402,23 +402,48 @@ function buildCanteen(){
       });
     }
     if(active.length>0){
-      html+='<p class="section-label" style="margin-top:'+(pending.length>0?"1.5rem":"0")+'">Godkjente bestillinger — klar for levering</p>';
+      html+='<p class="section-label" style="margin-top:'+(pending.length>0?"1.5rem":"0")+'">Godkjent — hentes av kaf\xe9en</p>';
       active.forEach(function(o){
+        const cl=o.checklist||{};
+        const allKeys=allCheckKeys(o);
+        const done=allKeys.filter(function(k){return k in cl;}).length;
+        const tot=allKeys.length;
+        const pct=tot>0?Math.min(100,Math.round((done/tot)*100)):0;
+        const allDone=tot>0&&done===tot;
         html+='<div class="card" style="border-color:#85B7EB">';
-        html+='<div class="card-header"><span class="card-title">Bestilling #'+o.id+' — '+weekLabel(o.week)+'</span><span class="badge badge-accepted">godkjent</span><div class="spacer"></div><button class="btn btn-sm no-print" onclick="printCanteenOrder('+o.id+')">&#x1F5A8; Skriv ut</button></div>';
-        html+='<table><thead><tr><th>Produkt</th><th>Dag</th><th>Ant.</th><th>Notat</th></tr></thead><tbody>';
+        html+='<div class="card-header"><span class="card-title">Bestilling #'+o.id+' — '+weekLabel(o.week)+'</span><span class="badge badge-accepted">godkjent</span><div class="spacer"></div><span style="font-size:13px;color:var(--text2)">'+done+'/'+tot+' hentet</span><button class="btn btn-sm no-print" style="margin-left:8px" onclick="printCanteenOrder('+o.id+')">&#x1F5A8; Skriv ut</button></div>';
+        html+='<div class="pickup-progress"><div class="pickup-bar" style="width:'+pct+'%"></div></div>';
+        if(allDone)html+='<div class="pickup-done-banner">Alle varer hentet! &#x2713;</div>';
         (o.items||[]).forEach(function(i){
           const p=getProd(i.pid);if(!p)return;
           if(i.splits&&i.splits.length>0){
-            i.splits.forEach(function(sp,idx){html+='<tr><td>'+(idx===0?p.name:'<span style="color:var(--text3)">↳</span>')+'</td><td class="item-note">'+sp.day+'</td><td>'+fmtQty(sp.qty)+'&nbsp;'+p.unit+'</td><td class="item-note">'+(idx===0&&i.note?i.note:'')+'</td></tr>';});
+            i.splits.forEach(function(sp,idx){
+              const key=i.pid+"_"+idx;
+              const isDone=key in cl;
+              html+='<div class="pickup-item" onclick="togglePickup('+o.id+',\''+key+'\')">'+
+                '<div class="pickup-check'+(isDone?" done":"")+'"></div>'+
+                '<div style="flex:1"><div class="pickup-name'+(isDone?" done":"")+'">'+p.name+'</div>'+
+                '<div class="pickup-day">'+sp.day+(i.note?' — '+i.note:'')+'</div></div>'+
+                '<span class="pickup-qty'+(isDone?" done":"")+'">'+fmtQty(sp.qty)+'&nbsp;'+p.unit+'</span>'+
+              '</div>';
+            });
           } else {
-            html+='<tr><td>'+p.name+'</td><td></td><td>'+fmtQty(i.qty)+'&nbsp;'+p.unit+'</td><td class="item-note">'+(i.note||'')+'</td></tr>';
+            const key=String(i.pid);
+            const isDone=key in cl;
+            html+='<div class="pickup-item" onclick="togglePickup('+o.id+',\''+key+'\')">'+
+              '<div class="pickup-check'+(isDone?" done":"")+'"></div>'+
+              '<div style="flex:1"><div class="pickup-name'+(isDone?" done":"")+'">'+p.name+'</div>'+
+              (i.note?'<div class="pickup-day">'+i.note+'</div>':'')+
+              '</div>'+
+              '<span class="pickup-qty'+(isDone?" done":"")+'">'+fmtQty(i.qty)+'&nbsp;'+p.unit+'</span>'+
+            '</div>';
           }
         });
-        html+='</tbody></table>';
         if(o.note)html+='<p class="order-note">Notat: '+o.note+'</p>';
-        html+='<div class="row" style="margin-top:12px"><button class="btn btn-blue" onclick="confirmDelivery('+o.id+')">&#x2713; Merk som levert</button></div>';
-        html+='</div>';
+        html+='<div class="row" style="margin-top:12px">';
+        if(Object.keys(cl).length>0)html+='<button class="btn btn-sm" onclick="resetPickup('+o.id+')" style="color:var(--text3)">Nullstill sjekkliste</button>';
+        html+='<span style="font-size:12px;color:var(--text3)">Hak av alt for \xe5 bekrefte levering</span>';
+        html+='</div></div>';
       });
     }
     if(pending.length===0&&active.length===0)html+='<div class="empty">Ingen ventende bestillinger.<br><small>Trykk Oppdater hvis du venter p\xe5 noe.</small></div>';
