@@ -262,6 +262,7 @@ function buildApp(){
   html+='<div class="spacer"></div>';
   if(isAdmin())html+='<span class="admin-badge">Admin</span>';
   else if(isCanteen())html+='<span class="admin-badge" style="background:#EAF3DE;color:#3B6D11">Kantine</span>';
+  if(!isCanteen())html+='<button class="btn btn-sm btn-primary no-print" onclick="openNew()">+ Ny bestilling</button>';
   html+='<button class="btn btn-sm no-print" onclick="loadAll()">&#8635; Oppdater</button>';
   html+='<button class="btn btn-sm no-print" onclick="logout()" style="color:var(--text3)">Logg ut</button>';
   html+='</header>';
