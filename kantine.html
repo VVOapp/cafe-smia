@@ -163,7 +163,7 @@ const db={
   deleteOrder:id=>sbFetch("DELETE","orders",null,"id=eq."+id),
 };
 
-const S={view:"orders",products:[],orders:[],modal:null,alert:null,alertType:"success",draft:null,editProduct:null,invoiceMonth:"",adminPending:null,_autoRefresh:null,historyOrder:null};
+const S={view:"canteen",products:[],orders:[],modal:null,alert:null,alertType:"success",draft:null,editProduct:null,invoiceMonth:"",adminPending:null,_autoRefresh:null,historyOrder:null};
 
 const fmt=n=>"kr\u00a0"+Number(n).toLocaleString("nb-NO",{minimumFractionDigits:2,maximumFractionDigits:2});
 function fmtQty(n){const v=parseFloat(parseFloat(n).toFixed(4));return isNaN(v)?0:v;}
@@ -249,12 +249,11 @@ function buildApp(){
   const ac=S.orders.filter(o=>o.status==="accepted").length;
   const missingPrice=S.products.filter(p=>!p.price||p.price===0);
   const tabs=isCanteen()?
-    [["canteen","Kantinen"+(canteenBadge>0?' <span class="badge-nav">'+canteenBadge+'</span>':"")]]:
+    [["canteen","Bestillinger"+(canteenBadge>0?' <span class="badge-nav">'+canteenBadge+'</span>':"")]]:
     [
-      ["orders","Mine bestillinger"+(ac>0?' <span class="badge-nav">'+ac+'</span>':"")],
-      ["canteen","Kantinen"+(canteenBadge>0?' <span class="badge-nav">'+canteenBadge+'</span>':"")],
-      ["products","Produkter"+(isAdmin()&&missingPrice.length>0?' <span class="badge-nav">!</span>':"")],
-      ...(isAdmin()?[["invoice","Faktura"],["insights","Innsikt"]]:[])
+      ["canteen","Bestillinger"+(canteenBadge>0?' <span class="badge-nav">'+canteenBadge+'</span>':"")],
+      ["orders","Historikk"],
+      ...(isAdmin()?[["products","Produkter"+(missingPrice.length>0?' <span class="badge-nav">!</span>':"")],["invoice","Faktura"],["insights","Innsikt"]]:[])
     ];
   let html='<div>';
   html+='<header>';
@@ -271,7 +270,7 @@ function buildApp(){
   html+='<nav>'+tabs.map(function(t){return '<button class="'+(S.view===t[0]?"active":"")+'" onclick="go(\''+t[0]+'\')">'+t[1]+'</button>';}).join("")+'</nav>';
   if(S.view==="orders")html+=buildOrders();
   else if(S.view==="canteen")html+=buildCanteen();
-  else if(S.view==="products")html+=buildProducts();
+  else if(S.view==="products"&&isAdmin())html+=buildProducts();
   else if(S.view==="invoice"&&isAdmin())html+=buildInvoice();
   else if(S.view==="insights"&&isAdmin())html+=buildInsights();
   else html+=buildOrders();
