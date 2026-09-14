@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="nb-NO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termokopp — Smia Kafé</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #ffffff; --bg2: #f5f3f0; --text: #1a1a18; --text2: #6b6a66; --text3: #a09f9b;
+  --border: rgba(0,0,0,0.1); --radius: 14px;
+  --accent: #6F4E37; --accent-light: #f5ede8; --accent-border: #d4a882;
+  --green: #3A5C38; --green-light: #edf4ec; --green-border: #a8d48a;
+  --red: #A32D2D; --red-light: #FCEBEB; --red-border: #F09595;
+  --amber: #854F0B; --amber-light: #FAEEDA; --amber-border: #FAC775;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:#1c1c1a; --bg2:#252523; --text:#f0efe9; --text2:#9e9d99; --text3:#6b6a66;
+    --border:rgba(255,255,255,0.1); --accent-light:#2e2118; --accent-border:#7a5c44;
+    --green-light:#1a2e1a; --red-light:#2e1a1a; --amber-light:#2e2010;
+  }
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg2); color: var(--text);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: 1.5rem; line-height: 1.5;
+}
+.card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  max-width: 360px; width: 100%;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1); overflow: hidden;
+}
+.card-header {
+  background: var(--accent); padding: 1.25rem 1.5rem 1rem; text-align: center;
+}
+.card-header .cafe-name {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: rgba(255,255,255,0.65); margin-bottom: 2px;
+}
+.card-header h1 { font-size: 1.25rem; font-weight: 700; color: #fff; }
+.card-header .sub { font-size: 12.5px; color: rgba(255,255,255,0.6); margin-top: 3px; }
+.card-body { padding: 1.5rem; }
+.cup-id {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 1rem; text-align: center;
+}
+.status-banner {
+  border-radius: 10px; padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; text-align: center;
+}
+.status-banner .status-icon { font-size: 2.5rem; margin-bottom: 6px; }
+.status-banner .status-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; }
+.status-banner .status-sub { font-size: 13px; opacity: 0.85; }
+.status-valid { background: var(--green-light); color: var(--green); border: 1px solid var(--green-border); }
+.status-expired { background: var(--red-light); color: var(--red); border: 1px solid var(--red-border); }
+.status-warning { background: var(--amber-light); color: var(--amber); border: 1px solid var(--amber-border); }
+.status-unsold { background: var(--accent-light); color: var(--accent); border: 1px solid var(--accent-border); }
+.status-unknown { background: var(--bg2); color: var(--text2); border: 1px solid var(--border); }
+.detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-label { color: var(--text2); }
+.detail-value { font-weight: 600; }
+.loading { text-align: center; color: var(--text3); padding: 2rem 0; font-size: 13px; }
+.footer { padding: 1rem 1.5rem; border-top: 1px solid var(--border); text-align: center; }
+.footer p { font-size: 12px; color: var(--text3); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <div class="cafe-name">Smia Kafé</div>
+    <h1>☕ Termokopp</h1>
+    <div class="sub">Gratis påfyll av svart kaffe</div>
+  </div>
+  <div class="card-body" id="card-body">
+    <div class="loading">Sjekker abonnement…</div>
+  </div>
+  <div class="footer">
+    <p>Spørsmål? Ta kontakt med oss i kassen.</p>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://kvtugiflpxehytpplkqw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString('nb-NO', {day:'numeric', month:'long', year:'numeric'});
+}
+
+async function load() {
+  const params = new URLSearchParams(location.search);
+  const id = params.get('id');
+  const body = document.getElementById('card-body');
+
+  if (!id) {
+    body.innerHTML = `
+      <div class="cup-id">Ingen kopp-ID</div>
+      <div class="status-banner status-unknown">
+        <div class="status-icon">❓</div>
+        <div class="status-title">Ugyldig lenke</div>
+        <div class="status-sub">Skann QR-koden på koppen på nytt.</div>
+      </div>`;
+    return;
+  }
+
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/thermos_cups?id=eq.${encodeURIComponent(id)}&select=id,sold,sold_at,expires_at`,
+      { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } }
+    );
+    const rows = await res.json();
+
+    if (!rows || rows.length === 0) {
+      body.innerHTML = `
+        <div class="cup-id">Kopp: ${esc(id)}</div>
+        <div class="status-banner status-unknown">
+          <div class="status-icon">❓</div>
+          <div class="status-title">Kopp ikke funnet</div>
+          <div class="status-sub">Denne koppen er ikke registrert i systemet. Kontakt oss i kassen.</div>
+        </div>`;
+      return;
+    }
+
+    const cup = rows[0];
+    const now = new Date();
+    const expiresAt = cup.expires_at ? new Date(cup.expires_at) : null;
+    const isExpired = expiresAt && expiresAt < now;
+    const daysLeft = expiresAt && !isExpired ? Math.ceil((expiresAt - now) / (1000*60*60*24)) : 0;
+    const almostExpired = daysLeft > 0 && daysLeft <= 30;
+
+    let banner, details = '';
+
+    if (!cup.sold) {
+      banner = `
+        <div class="status-banner status-unsold">
+          <div class="status-icon">🥤</div>
+          <div class="status-title">Ikke aktivert ennå</div>
+          <div class="status-sub">Koppen er ikke registrert som solgt. Kontakt oss i kassen.</div>
+        </div>`;
+    } else if (isExpired) {
+      banner = `
+        <div class="status-banner status-expired">
+          <div class="status-icon">⚠️</div>
+          <div class="status-title">Abonnement utgått</div>
+          <div class="status-sub">Utløp ${fmtDate(cup.expires_at)}</div>
+        </div>`;
+      details = `
+        <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value" style="color:var(--red)">Utgått</span></div>
+        <div class="detail-row"><span class="detail-label">Utløpte</span><span class="detail-value">${fmtDate(cup.expires_at)}</span></div>
+        ${cup.sold_at ? `<div class="detail-row"><span class="detail-label">Kjøpt</span><span class="detail-value">${fmtDate(cup.sold_at)}</span></div>` : ''}
+        <div class="detail-row"><span class="detail-label">Fornyelse</span><span class="detail-value">Snakk med oss i kassen</span></div>`;
+    } else if (almostExpired) {
+      banner = `
+        <div class="status-banner status-warning">
+          <div class="status-icon">⏳</div>
+          <div class="status-title">Gyldig — snart utløp</div>
+          <div class="status-sub">${daysLeft} dag${daysLeft === 1 ? '' : 'er'} igjen</div>
+        </div>`;
+      details = `
+        <div class="detail-row"><span class="detail-label">Gyldig til</span><span class="detail-value">${fmtDate(cup.expires_at)}</span></div>
+        <div class="detail-row"><span class="detail-label">Dager igjen</span><span class="detail-value" style="color:var(--amber)">${daysLeft}</span></div>
+        ${cup.sold_at ? `<div class="detail-row"><span class="detail-label">Kjøpt</span><span class="detail-value">${fmtDate(cup.sold_at)}</span></div>` : ''}`;
+    } else {
+      banner = `
+        <div class="status-banner status-valid">
+          <div class="status-icon">✅</div>
+          <div class="status-title">Gyldig abonnement</div>
+          <div class="status-sub">Gratis påfyll av svart kaffe</div>
+        </div>`;
+      details = `
+        <div class="detail-row"><span class="detail-label">Gyldig til</span><span class="detail-value">${fmtDate(cup.expires_at)}</span></div>
+        ${cup.sold_at ? `<div class="detail-row"><span class="detail-label">Kjøpt</span><span class="detail-value">${fmtDate(cup.sold_at)}</span></div>` : ''}`;
+    }
+
+    body.innerHTML = `<div class="cup-id">Kopp: ${esc(cup.id)}</div>${banner}${details ? `<div style="margin-top:4px">${details}</div>` : ''}`;
+
+  } catch(e) {
+    document.getElementById('card-body').innerHTML = `
+      <div class="status-banner status-unknown">
+        <div class="status-icon">❌</div>
+        <div class="status-title">Kunne ikke koble til</div>
+        <div class="status-sub">Prøv igjen, eller kontakt oss i kassen.</div>
+      </div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

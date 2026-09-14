@@ -197,16 +197,39 @@ function renderThermosCard() {
     <div class="card">
       <div class="product-name">🥤 Ikke solgt ennå</div>
       <p style="color:var(--text2);font-size:13px;margin:6px 0 12px">Denne koppen er ikke registrert som solgt. Selg koppen i kassen, og trykk deretter under.</p>
-      <button class="btn btn-primary" onclick="markThermosSold()">💰 Merk som solgt</button>
+      <button class="btn btn-primary" onclick="markThermosSold()">💰 Merk som solgt — 365 dager</button>
     </div>`;
   }
-  const eligibleLine = ST.eligibleProducts.length > 0 ? `Gjelder: ${esc(ST.eligibleProducts.join(', '))}` : 'Ingen produkter satt opp ennå i Kafeoversikt → Lojalitet.';
+  const now = new Date();
+  const expiresAt = cup.expires_at ? new Date(cup.expires_at) : null;
+  const isExpired = expiresAt && expiresAt < now;
+  const expiryStr = expiresAt ? expiresAt.toLocaleDateString('nb-NO', {day:'numeric',month:'long',year:'numeric'}) : '—';
+  const daysLeft = expiresAt && !isExpired ? Math.ceil((expiresAt - now) / (1000*60*60*24)) : 0;
+  const eligibleLine = ST.eligibleProducts.length > 0 ? `Gjelder: ${esc(ST.eligibleProducts.join(', '))}` : '';
+  const usageStr = `Brukt ${ST.thermosRedemptionCount} gang${ST.thermosRedemptionCount === 1 ? '' : 'er'} totalt`;
+
+  if (isExpired) {
+    return `
+    <div class="card" style="border-color:#F09595">
+      <div style="background:#FCEBEB;color:#A32D2D;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-weight:700;font-size:14px">
+        ⚠️ Abonnement utgått — ${expiryStr}
+      </div>
+      <div class="product-name">☕ Termokopp — gratis påfyll</div>
+      ${eligibleLine ? `<div class="progress-label">${eligibleLine}</div>` : ''}
+      <div class="progress-label" style="margin-top:4px">${usageStr}</div>
+      <button class="btn btn-primary" style="margin-top:10px;width:100%" onclick="renewThermos()">🔄 Forny abonnement — 365 nye dager</button>
+    </div>`;
+  }
+
   return `
-  <div class="card">
+  <div class="card" style="border-color:#C0DD97">
+    <div style="background:#EAF3DE;color:#3B6D11;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-weight:700;font-size:14px">
+      ✅ Gyldig til ${expiryStr}${daysLeft <= 30 ? ` &nbsp;·&nbsp; <span style="color:#854F0B">${daysLeft} dager igjen</span>` : ''}
+    </div>
     <div class="product-name">☕ Termokopp — gratis påfyll</div>
-    <div class="progress-label">${eligibleLine}</div>
-    <div class="progress-label" style="margin-top:4px">Brukt ${ST.thermosRedemptionCount} gang${ST.thermosRedemptionCount === 1 ? '' : 'er'} totalt</div>
-    <button class="btn btn-green" style="margin-top:10px" onclick="redeemThermos()">☕ Registrer gratis påfyll</button>
+    ${eligibleLine ? `<div class="progress-label">${eligibleLine}</div>` : ''}
+    <div class="progress-label" style="margin-top:4px">${usageStr}</div>
+    <button class="btn btn-green" style="margin-top:10px;width:100%" onclick="redeemThermos()">☕ Registrer gratis påfyll</button>
   </div>`;
 }
 
@@ -246,6 +269,13 @@ function submitManualEntry() {
 async function onCodeScanned(token) {
   stopScan();
   if (!token) return;
+
+  // If the QR encodes a URL with ?id= (e.g. kopp.html?id=VVO-001), extract the id.
+  try {
+    const url = new URL(token);
+    const extractedId = url.searchParams.get('id');
+    if (extractedId) token = extractedId;
+  } catch(e) { /* not a URL — use token as-is */ }
 
   // Thermos cup codes are pre-registered at print time, so check that
   // table first. A missing table (thermos-setup.sql not run yet) or an
@@ -289,9 +319,15 @@ async function loadThermosRedemptionCount() {
 
 async function markThermosSold() {
   try {
-    await sbPatch(`thermos_cups?id=eq.${encodeURIComponent(ST.thermosCup.id)}`, { sold: true, sold_at: new Date().toISOString() });
-    ST.thermosCup = { ...ST.thermosCup, sold: true };
-    showAlert('Kopp registrert som solgt! 🥤');
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+    await sbPatch(`thermos_cups?id=eq.${encodeURIComponent(ST.thermosCup.id)}`, {
+      sold: true,
+      sold_at: now.toISOString(),
+      expires_at: expiresAt.toISOString()
+    });
+    ST.thermosCup = { ...ST.thermosCup, sold: true, sold_at: now.toISOString(), expires_at: expiresAt.toISOString() };
+    showAlert('Kopp registrert som solgt! Gyldig til ' + expiresAt.toLocaleDateString('nb-NO', {day:'numeric',month:'long',year:'numeric'}) + ' 🥤');
     renderMain();
   } catch(e) {
     showAlert('Feil: ' + e.message, 'error');
@@ -299,10 +335,31 @@ async function markThermosSold() {
 }
 
 async function redeemThermos() {
+  const expiresAt = ST.thermosCup.expires_at ? new Date(ST.thermosCup.expires_at) : null;
+  if (expiresAt && expiresAt < new Date()) {
+    showAlert('Abonnement utgått — kan ikke registrere påfyll.', 'error');
+    return;
+  }
   try {
     await sbPost('thermos_redemptions', [{ cup_id: ST.thermosCup.id }]);
     await loadThermosRedemptionCount();
     showAlert('Gratis påfyll registrert! ☕');
+    renderMain();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+}
+
+async function renewThermos() {
+  if (!confirm('Forny termokopp for 365 nye dager?\nHusk å ta betaling i kassen.')) return;
+  try {
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    await sbPatch(`thermos_cups?id=eq.${encodeURIComponent(ST.thermosCup.id)}`, {
+      expires_at: expiresAt.toISOString(),
+      sold_at: new Date().toISOString()
+    });
+    ST.thermosCup = { ...ST.thermosCup, expires_at: expiresAt.toISOString() };
+    showAlert('Kopp fornyet! Gyldig til ' + expiresAt.toLocaleDateString('nb-NO', {day:'numeric',month:'long',year:'numeric'}) + ' ☕');
     renderMain();
   } catch(e) {
     showAlert('Feil: ' + e.message, 'error');

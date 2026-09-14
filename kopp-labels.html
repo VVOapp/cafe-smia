@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="nb-NO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Termokopp-etiketter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f0eeea; color: #1a1a18; padding: 1.5rem; line-height: 1.5;
+}
+h1 { font-size: 1.2rem; font-weight: 700; margin-bottom: 4px; }
+p.sub { font-size: 13px; color: #6b6a66; margin-bottom: 1.5rem; }
+
+.setup {
+  background: #fff; border: 1px solid rgba(0,0,0,0.12); border-radius: 12px;
+  padding: 1.25rem 1.5rem; max-width: 500px; margin-bottom: 1.5rem;
+}
+.form-row { margin-bottom: 14px; }
+.form-row label { font-size: 12px; font-weight: 600; color: #6b6a66; display: block; margin-bottom: 5px; }
+.form-row input {
+  background: #fff; border: 1px solid rgba(0,0,0,0.2); border-radius: 6px;
+  padding: 8px 10px; font-size: 14px; color: #1a1a18; width: 100%;
+}
+.form-row input:focus { outline: none; border-color: #378ADD; box-shadow: 0 0 0 3px rgba(55,138,221,0.12); }
+.note { font-size: 12px; color: #a09f9b; margin-top: 4px; }
+
+.btn { padding: 9px 18px; border-radius: 7px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; }
+.btn-primary { background: #3A5C38; color: #fff; }
+.btn-primary:hover { background: #2d4a2b; }
+.btn-print { background: #6F4E37; color: #fff; margin-left: 8px; }
+.btn-print:hover { background: #5a3e2b; }
+
+/* ── Label preview area (screen) ── */
+#preview {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 1.5rem;
+}
+
+/* ── Single label ── */
+.label {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  /* 24mm wide × 40mm tall — shown at 3.78px/mm ≈ screen preview */
+  width: 90px;
+  height: 151px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 3px 5px;
+  gap: 4px;
+  overflow: hidden;
+}
+.label .qr-wrap { width: 76px; height: 76px; display: flex; align-items: center; justify-content: center; }
+.label .qr-wrap canvas, .label .qr-wrap img { width: 76px !important; height: 76px !important; }
+.label .cup-num {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.05em;
+  text-align: center; color: #111; line-height: 1.1;
+}
+.label .cup-name {
+  font-size: 6.5px; color: #555; text-align: center; line-height: 1.2;
+}
+
+/* ── Print styles ── */
+@media print {
+  @page {
+    /* 24mm wide × 40mm tall — adjust if your labels are a different length */
+    size: 24mm 40mm;
+    margin: 1.5mm;
+  }
+  body { background: #fff; padding: 0; }
+  .setup, .controls, h1, p.sub, #instructions { display: none !important; }
+  #preview { display: block; gap: 0; margin: 0; }
+  .label {
+    width: 21mm;
+    height: 37mm;
+    border: none;
+    border-radius: 0;
+    padding: 1mm 1mm 1.5mm;
+    gap: 0.8mm;
+    page-break-after: always;
+    break-after: page;
+    display: flex;
+  }
+  .label:last-child { page-break-after: avoid; break-after: avoid; }
+  .label .qr-wrap { width: 19mm; height: 19mm; }
+  .label .qr-wrap canvas, .label .qr-wrap img { width: 19mm !important; height: 19mm !important; }
+  .label .cup-num { font-size: 7pt; }
+  .label .cup-name { font-size: 5pt; }
+}
+</style>
+</head>
+<body>
+
+<h1>🥤 Termokopp-etiketter</h1>
+<p class="sub">Genererer etiketter for 24mm Dymo-tape</p>
+
+<div class="setup">
+  <div class="form-row">
+    <label>Base-URL for QR-kode</label>
+    <input type="url" id="baseUrl" value="https://DITT-BRUKERNAVN.github.io/cafe-smia-repo/kopp.html">
+    <div class="note">Bytt ut <strong>DITT-BRUKERNAVN</strong> med ditt GitHub-brukernavn. QR-koden blir: [URL]?id=VVO-001</div>
+  </div>
+  <div class="form-row">
+    <label>Fra nummer</label>
+    <input type="number" id="fromNum" value="1" min="1" max="9999">
+  </div>
+  <div class="form-row">
+    <label>Antall etiketter</label>
+    <input type="number" id="count" value="1" min="1" max="200">
+  </div>
+  <div class="form-row">
+    <label>Etikett-tekst under nummer</label>
+    <input type="text" id="labelText" value="VVO Termokopp">
+  </div>
+  <div class="controls">
+    <button class="btn btn-primary" onclick="generate()">▶ Generer</button>
+    <button class="btn btn-print" onclick="window.print()">🖨 Skriv ut</button>
+  </div>
+</div>
+
+<div id="instructions" style="max-width:500px;background:#FAEEDA;border:1px solid #FAC775;border-radius:10px;padding:1rem 1.25rem;margin-bottom:1rem;font-size:13px;color:#5a3500">
+  <strong>Utskriftsoppsett</strong><br>
+  Velg Dymo-printeren i utskriftsdialogen. Under <em>Papirstørrelse</em>, velg <strong>24mm × 40mm</strong> (eller «Custom» og skriv inn manuelt).
+  Sett marginer til minimum/ingen. Slå av «Tilpass til side». En etikett per ark.
+</div>
+
+<div id="preview"></div>
+
+<script>
+// ── Supabase registration ──────────────────────────────────────────────────
+const SUPABASE_URL = 'https://kvtugiflpxehytpplkqw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
+
+function padNum(n) { return String(n).padStart(3, '0'); }
+function cupId(n) { return 'VVO-' + padNum(n); }
+
+async function registerCups(ids) {
+  // Insert rows into thermos_cups for any IDs that don't exist yet (ignore duplicates)
+  const rows = ids.map(id => ({ id, sold: false }));
+  try {
+    await fetch(SUPABASE_URL + '/rest/v1/thermos_cups', {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Content-Type': 'application/json',
+        'Prefer': 'return=minimal,resolution=ignore-duplicates'
+      },
+      body: JSON.stringify(rows)
+    });
+  } catch(e) {
+    console.warn('Could not register cups in Supabase:', e);
+  }
+}
+
+async function generate() {
+  const baseUrl  = document.getElementById('baseUrl').value.trim().replace(/\/$/, '');
+  const from     = parseInt(document.getElementById('fromNum').value) || 1;
+  const count    = Math.min(parseInt(document.getElementById('count').value) || 1, 200);
+  const labelTxt = document.getElementById('labelText').value.trim() || 'VVO Termokopp';
+  const preview  = document.getElementById('preview');
+
+  preview.innerHTML = '<p style="color:#a09f9b;font-size:13px">Genererer…</p>';
+
+  const ids = [];
+  for (let i = 0; i < count; i++) ids.push(cupId(from + i));
+
+  // Register in Supabase (ignore if already exist)
+  await registerCups(ids);
+
+  preview.innerHTML = '';
+
+  for (const id of ids) {
+    const url = `${baseUrl}?id=${encodeURIComponent(id)}`;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'label';
+
+    // QR code
+    const qrWrap = document.createElement('div');
+    qrWrap.className = 'qr-wrap';
+    wrapper.appendChild(qrWrap);
+
+    new QRCode(qrWrap, {
+      text: url,
+      width: 76,
+      height: 76,
+      correctLevel: QRCode.CorrectLevel.L   // Low = simplest code = largest squares
+    });
+
+    // Cup number
+    const numEl = document.createElement('div');
+    numEl.className = 'cup-num';
+    numEl.textContent = id;
+    wrapper.appendChild(numEl);
+
+    // Label text
+    const txtEl = document.createElement('div');
+    txtEl.className = 'cup-name';
+    txtEl.textContent = labelTxt;
+    wrapper.appendChild(txtEl);
+
+    preview.appendChild(wrapper);
+  }
+}
+
+// Auto-generate one label on load
+window.addEventListener('load', generate);
+</script>
+</body>
+</html>
