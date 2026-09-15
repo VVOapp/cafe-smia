@@ -6964,33 +6964,6 @@ async function buildLojalitetProgram() {
     </table>`}
   </div>
 
-  <div class="card">
-    <div class="card-header"><span class="card-title">Lojalitetskort til utdeling</span></div>
-    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">
-      Skriv ut et ark med anonyme QR-koder og gi ett kort til nye kunder ved første besøk.
-      Koden aktiveres automatisk første gang den skannes — ingenting å registrere på forhånd.
-    </p>
-    <div class="row">
-      <div style="max-width:120px">
-        <input type="number" id="lr-card-count" min="1" max="200" step="1" value="24">
-      </div>
-      <button class="btn btn-secondary" onclick="printLoyaltyCards()">🖨️ Skriv ut kort</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="card-title">Selvbetjent kode</span></div>
-    <p style="font-size:12.5px;color:var(--text2);margin-bottom:10px">
-      Alternativt kan kunder generere sin egen kode på telefonen — heng gjerne opp denne lenken/QR-koden ved disken:
-    </p>
-    <div class="row" style="gap:10px;align-items:center">
-      <div id="lr-selfserve-qr" style="background:white;padding:8px;border-radius:8px;display:inline-block"></div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <code style="font-size:12px;word-break:break-all">${LOYALTY_SELFSERVE_URL}</code>
-        <button class="btn btn-secondary btn-sm" onclick="printSelfServePoster()">🖨️ Skriv ut plakat</button>
-      </div>
-    </div>
-  </div>
   ${thermosSection}
   ${buildLrModal()}`;
 }
