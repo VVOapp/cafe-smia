@@ -4570,6 +4570,7 @@ async function buildBestilling() {
     <div class="sub-nav">
       <button class="${subTab==='ordre'?'active':''}" onclick="ST.subTab.bestilling='ordre';renderTab()">📋 Ordre</button>
       <button class="${subTab==='bord'?'active':''}"  onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord</button>
+      <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
     </div>
     ${subTab === 'bord' ? await buildBord() : await buildOrdreListe()}`;
   }
@@ -4595,6 +4596,7 @@ async function buildBestilling() {
     <button class="${subTab==='foresporsler'?'active':''}" onclick="ST.subTab.bestilling='foresporsler';renderTab()">📥 Forespørsler${reqBadge}</button>
     <button class="${subTab==='bord'?'active':''}" onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeSpan}</button>
     ${ST._ordreEdit ? `<button class="active" style="pointer-events:none">✏️ Rediger ordre</button>` : ''}
+    <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
   </div>
   ${content}`;
 }
@@ -7242,6 +7244,40 @@ function uuidLoyalty() {
     const rnd = Math.random() * 16 | 0, v = c === 'x' ? rnd : (rnd & 0x3 | 0x8);
     return v.toString(16);
   });
+}
+
+function printBestillingQR() {
+  const win = window.open('', '_blank');
+  if (!win) { showAlert('Nettleseren blokkerte popup-vinduet — tillat popup-vinduer og prøv igjen.', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="nb-NO"><head><meta charset="UTF-8">
+  <title>Bestillings-QR — Smia Kafé</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+  <style>
+    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; }
+    .card { text-align: center; border: 1px solid #ddd; border-radius: 16px; padding: 2rem 2.5rem; max-width: 280px; }
+    .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #6F4E37; margin-bottom: 8px; }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 4px; color: #1C1208; }
+    .sub { font-size: 13px; color: #888; margin-bottom: 1.25rem; }
+    #qr { display: flex; justify-content: center; margin-bottom: 1rem; }
+    .url { font-size: 11px; color: #aaa; margin-bottom: 1.25rem; }
+    .note { font-size: 12px; color: #6b5c4a; background: #f5ede8; border-radius: 8px; padding: 0.7rem 0.9rem; line-height: 1.5; }
+    @media print { body { min-height: unset; } .card { border: 1px solid #ddd; } }
+  </style>
+  </head><body>
+  <div class="card">
+    <div class="eyebrow">Smia Kafé</div>
+    <h1>Bestill her</h1>
+    <p class="sub">Lunsj &amp; kafévarer</p>
+    <div id="qr"></div>
+    <p class="url">vvoapp.github.io/cafe-smia</p>
+    <div class="note">Skann QR-koden med kameraet på telefonen, legg inn bestillingen og send.</div>
+  </div>
+  <script>
+    new QRCode(document.getElementById('qr'), { text: 'https://vvoapp.github.io/cafe-smia/', width: 180, height: 180, correctLevel: QRCode.CorrectLevel.M });
+    setTimeout(() => window.print(), 600);
+  <\/script>
+  </body></html>`);
+  win.document.close();
 }
 
 function printLoyaltyCards() {
