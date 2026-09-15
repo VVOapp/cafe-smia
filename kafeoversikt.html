@@ -544,6 +544,21 @@ const parseNbDate = s => {
 };
 const today = () => new Date().toISOString().slice(0,10);
 
+// Norwegian school year: Aug 1 → Jul 31 the following year
+function schoolYearStart(d) {
+  // Returns the start date (YYYY-MM-DD) of the school year containing date d (or today)
+  const dt = d ? new Date(d) : new Date();
+  const y = dt.getFullYear();
+  return dt.getMonth() >= 7 ? `${y}-08-01` : `${y-1}-08-01`;
+}
+function schoolYearLabel(dateStr) {
+  if (!dateStr) return 'Ukjent skoleår';
+  const dt = new Date(dateStr);
+  const y = dt.getFullYear();
+  return dt.getMonth() >= 7 ? `${y}/${y+1}` : `${y-1}/${y}`;
+}
+const currentSYStart = schoolYearStart();
+
 // Renders a dd.mm.yyyy text display + hidden type=date picker (cross-browser safe)
 // id: the hidden input id; isoVal: yyyy-mm-dd; onchangeCode: JS string run after change
 function mkDatePicker(id, isoVal, onchangeCode, extraStyle = '') {
@@ -4303,14 +4318,71 @@ function updateBordCustomRows() {
 }
 
 async function buildBord() {
-  let allRequests = [];
+  let allRequests = [], privateTableOrders = [];
   try { allRequests = await sbGet('order_requests?order_type=eq.table&order=delivery_date.asc,delivery_time.asc'); } catch(e) {}
+  try { privateTableOrders = await sbGet('private_orders?delivery_type=eq.bord&select=*,private_order_items(*)&order=delivery_date.asc,order_time.asc'); } catch(e) {}
 
   const todayStr = today();
-  const pending         = allRequests.filter(r => r.status === 'pending');
+  const pending           = allRequests.filter(r => r.status === 'pending');
   const confirmedUpcoming = allRequests.filter(r => r.status === 'table_confirmed' && r.delivery_date >= todayStr);
-  const past            = allRequests.filter(r => r.status === 'table_confirmed' && r.delivery_date < todayStr);
-  const completed       = allRequests.filter(r => r.status === 'confirmed' || r.status === 'dismissed');
+  const past              = allRequests.filter(r => r.status === 'table_confirmed' && r.delivery_date < todayStr);
+  const completed         = allRequests.filter(r => r.status === 'confirmed' || r.status === 'dismissed');
+
+  // Only show current school year in this tab; older ones go to Historikk
+  const currentSYOrders   = privateTableOrders.filter(o => !o.delivery_date || o.delivery_date >= currentSYStart);
+  const activePrivate     = currentSYOrders.filter(o => o.status !== 'betalt' && (!o.delivery_date || o.delivery_date >= todayStr));
+  const pastPrivate       = currentSYOrders.filter(o => o.status !== 'betalt' && o.delivery_date && o.delivery_date < todayStr);
+  const paidPrivate       = currentSYOrders.filter(o => o.status === 'betalt');
+
+  if (!ST._bordExpanded) ST._bordExpanded = new Set();
+
+  const privateCard = o => {
+    const expanded = ST._bordExpanded.has(o.id);
+    const items = (o.private_order_items || []);
+    const dateStr = o.delivery_date ? fmtDate(o.delivery_date) + (o.order_time ? ' kl. ' + o.order_time.slice(0,5) : '') : '—';
+    const statusColor = o.status === 'sendt' ? '#1565c0' : '#6b6a66';
+    const statusLabel = o.status === 'sendt' ? '📤 Faktura sendt' : o.status === 'betalt' ? '✅ Betalt' : '📋 Utkast';
+    return `
+    <div style="background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;border-left:4px solid ${o.delivery_date===todayStr?'#1565c0':'var(--border2)'}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;cursor:pointer" onclick="ST._bordExpanded.has(${o.id})?ST._bordExpanded.delete(${o.id}):ST._bordExpanded.add(${o.id});renderTab()">
+        <div>
+          <div style="font-weight:700;font-size:1rem">${esc(o.customer_name||'—')}</div>
+          ${o.contact_name?`<div style="font-size:0.85rem;color:var(--text2)">v/ ${esc(o.contact_name)}</div>`:''}
+        </div>
+        <span style="font-size:0.78rem;font-weight:600;color:${statusColor}">${statusLabel}</span>
+      </div>
+      <div style="margin-top:8px;font-size:0.88rem;display:flex;flex-wrap:wrap;gap:14px;color:var(--text2);cursor:pointer" onclick="ST._bordExpanded.has(${o.id})?ST._bordExpanded.delete(${o.id}):ST._bordExpanded.add(${o.id});renderTab()">
+        ${o.delivery_date?`<span>📅 ${dateStr}</span>`:''}
+        ${o.num_people?`<span>👥 ${o.num_people} gjester</span>`:''}
+        ${o.email?`<span>📧 ${esc(o.email)}</span>`:''}
+        <span style="margin-left:auto;font-size:0.8rem;color:var(--text3)">${expanded?'▲ Skjul':'▼ Vis bestilling'}</span>
+      </div>
+      ${o.note?`<p style="margin:8px 0 0;font-size:0.85rem;color:var(--text2);border-top:1px solid var(--border);padding-top:8px">💬 ${esc(o.note)}</p>`:''}
+      ${expanded ? `
+        <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          ${items.length === 0
+            ? `<div style="font-size:0.85rem;color:var(--text3)">Ingen varer registrert ennå.</div>`
+            : `<table style="width:100%;font-size:0.88rem;border-collapse:collapse">
+                <thead><tr style="color:var(--text3);font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em">
+                  <th style="text-align:left;padding:3px 0">Vare</th>
+                  <th style="text-align:right;padding:3px 8px">Ant.</th>
+                  <th style="text-align:right;padding:3px 0">Sum</th>
+                </tr></thead>
+                <tbody>
+                  ${items.map(i=>`<tr>
+                    <td style="padding:4px 0">${esc(i.product_name)}</td>
+                    <td style="text-align:right;padding:4px 8px;font-variant-numeric:tabular-nums">${i.quantity}</td>
+                    <td style="text-align:right;padding:4px 0;font-variant-numeric:tabular-nums">${i.total_price!=null?i.total_price.toFixed(2)+' kr':'—'}</td>
+                  </tr>`).join('')}
+                </tbody>
+                <tfoot><tr style="border-top:1px solid var(--border);font-weight:700">
+                  <td colspan="2" style="padding:6px 8px 0 0;text-align:right;color:var(--text2)">Totalt</td>
+                  <td style="padding:6px 0 0;text-align:right;font-variant-numeric:tabular-nums">${items.reduce((s,i)=>s+(i.total_price||0),0).toFixed(2)} kr</td>
+                </tr></tfoot>
+              </table>`}
+        </div>` : ''}
+    </div>`;
+  };
 
   // If we're in the middle of seating a guest, show item picker
   if (ST._bordSeating) {
@@ -4390,7 +4462,25 @@ async function buildBord() {
       ${completed.map(r => bookingCard(r, '')).join('')}
     </div>` : ''}
 
-    ${allRequests.length === 0 ? `<div class="card"><div class="empty">Ingen bordbookinger ennå</div></div>` : ''}
+    ${activePrivate.length > 0 ? `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span class="card-title">🪑 Bordbestillinger</span></div>
+      ${activePrivate.map(o => privateCard(o)).join('')}
+    </div>` : ''}
+
+    ${pastPrivate.length > 0 ? `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span class="card-title" style="color:var(--text2)">Tidligere bordbestillinger</span></div>
+      ${pastPrivate.map(o => privateCard(o)).join('')}
+    </div>` : ''}
+
+    ${paidPrivate.length > 0 ? `
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span class="card-title" style="color:var(--text2)">Betalte bordbestillinger</span></div>
+      ${paidPrivate.map(o => privateCard(o)).join('')}
+    </div>` : ''}
+
+    ${allRequests.length === 0 && privateTableOrders.length === 0 ? `<div class="card"><div class="empty">Ingen bordbookinger ennå</div></div>` : ''}
   </div>`;
 }
 
@@ -4568,11 +4658,12 @@ async function buildBestilling() {
   if (ST.role !== 'admin') {
     return `
     <div class="sub-nav">
-      <button class="${subTab==='ordre'?'active':''}" onclick="ST.subTab.bestilling='ordre';renderTab()">📋 Ordre</button>
-      <button class="${subTab==='bord'?'active':''}"  onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord</button>
+      <button class="${subTab==='ordre'?'active':''}"     onclick="ST.subTab.bestilling='ordre';renderTab()">📋 Ordre</button>
+      <button class="${subTab==='bord'?'active':''}"      onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord</button>
+      <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">🗂 Historikk</button>
       <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
     </div>
-    ${subTab === 'bord' ? await buildBord() : await buildOrdreListe()}`;
+    ${subTab === 'bord' ? await buildBord() : subTab === 'historikk' ? await buildBestillingHistorikk() : await buildOrdreListe()}`;
   }
 
   // Admin: full flat sub-nav
@@ -4588,6 +4679,7 @@ async function buildBestilling() {
   else if (subTab === 'ny')           content = buildOrdreForm();
   else if (subTab === 'foresporsler') content = await buildOrdreForesporsler();
   else if (subTab === 'bord')         content = await buildBord();
+  else if (subTab === 'historikk')    content = await buildBestillingHistorikk();
 
   return `
   <div class="sub-nav">
@@ -4595,15 +4687,79 @@ async function buildBestilling() {
     <button class="${subTab==='ny'?'active':''}" onclick="ST.subTab.bestilling='ny';ST._ordreEdit=null;ST._ordreRows=null;ST._ordreFormState=null;renderTab()">+ Ny ordre</button>
     <button class="${subTab==='foresporsler'?'active':''}" onclick="ST.subTab.bestilling='foresporsler';renderTab()">📥 Forespørsler${reqBadge}</button>
     <button class="${subTab==='bord'?'active':''}" onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeSpan}</button>
+    <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">🗂 Historikk</button>
     ${ST._ordreEdit ? `<button class="active" style="pointer-events:none">✏️ Rediger ordre</button>` : ''}
     <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
   </div>
   ${content}`;
 }
 
+async function buildBestillingHistorikk() {
+  let orders = [], tableRequests = [];
+  try { orders = await sbGet('private_orders?select=*,private_order_items(*)&order=order_date.desc'); } catch(e) {}
+  try { tableRequests = await sbGet('order_requests?order_type=eq.table&order=delivery_date.desc'); } catch(e) {}
+
+  // Only keep orders older than the current school year
+  const oldOrders = orders.filter(o => o.order_date && o.order_date < currentSYStart);
+  const oldRequests = tableRequests.filter(r => r.delivery_date && r.delivery_date < currentSYStart);
+
+  if (oldOrders.length === 0 && oldRequests.length === 0) {
+    return `<div class="card"><div class="empty">Ingen historikk ennå — tidligere skoleårs ordre vil dukke opp her automatisk.</div></div>`;
+  }
+
+  // Group by school year label
+  const groups = {};
+  oldOrders.forEach(o => {
+    const sy = schoolYearLabel(o.order_date);
+    if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
+    groups[sy].orders.push(o);
+  });
+  oldRequests.forEach(r => {
+    const sy = schoolYearLabel(r.delivery_date);
+    if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
+    groups[sy].requests.push(r);
+  });
+
+  const syKeys = Object.keys(groups).sort().reverse();
+
+  return syKeys.map(sy => {
+    const g = groups[sy];
+    const orderRows = g.orders.map(o => {
+      const total = (o.private_order_items||[]).reduce((s,i) => s + Number(i.total_price||0), 0);
+      const statusLabel = o.status==='utkast' ? 'Utkast' : o.status==='sendt' ? 'Sendt ✓' : 'Betalt ✓';
+      return `<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:600">${esc(o.customer_name)}</div>
+          <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(o.order_date)}${o.delivery_type==='bord'?' · 🪑 Bord':''}</div>
+        </div>
+        <span class="badge badge-${o.status}">${statusLabel}</span>
+        ${ST.role === 'admin' ? `<span style="font-weight:700;font-size:13px">${fmt(total)}</span>` : ''}
+        <button class="btn btn-sm" onclick="printStaffOrder(${o.id})" title="Personalark">📋</button>
+      </div>`;
+    }).join('');
+
+    const requestRows = g.requests.map(r => `
+      <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:600">${esc(r.invoice_to||r.contact_name||'—')} <span style="font-size:11px;color:var(--text3);font-weight:400">🪑 Bordreservasjon</span></div>
+          <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(r.delivery_date)}${r.delivery_time?' kl. '+esc(r.delivery_time):''}${r.num_people?' · 👥 '+r.num_people+' gjester':''}</div>
+        </div>
+        <span style="font-size:0.78rem;font-weight:600;color:var(--text2)">${r.status==='confirmed'?'✅ Fullført':r.status==='dismissed'?'❌ Avslått':esc(r.status)}</span>
+      </div>`).join('');
+
+    return `<div class="card" style="margin-bottom:1rem">
+      <div class="card-header"><span class="card-title">📁 Skoleår ${sy}</span><span style="font-size:12px;color:var(--text2)">${g.orders.length + g.requests.length} ordre</span></div>
+      ${orderRows}${requestRows}
+    </div>`;
+  }).join('');
+}
+
 async function buildOrdreListe() {
   let orders = [];
   try { orders = await sbGet('private_orders?select=*,private_order_items(*)&order=order_date.asc'); } catch(e) {}
+
+  // Only show current school year; older ones go to Historikk
+  orders = orders.filter(o => !o.order_date || o.order_date >= currentSYStart);
 
   // Sort: upcoming (future, unsent) first by date desc, then past/sent by date desc
   const todayStr = today();
@@ -4925,12 +5081,13 @@ async function refreshFakturaBadge() {
 
 async function refreshBordBadge() {
   try {
-    // Badge = pending table bookings (admin needs to confirm) + today's confirmed table bookings (staff needs to seat)
-    const [pending, confirmed] = await Promise.all([
+    // Badge = pending/confirmed table booking requests + today's directly-created bord orders
+    const [pending, confirmed, privateToday] = await Promise.all([
       sbGet(`order_requests?order_type=eq.table&status=eq.pending&select=id`),
-      sbGet(`order_requests?order_type=eq.table&status=eq.table_confirmed&delivery_date=gte.${today()}&select=id`)
+      sbGet(`order_requests?order_type=eq.table&status=eq.table_confirmed&delivery_date=gte.${today()}&select=id`),
+      sbGet(`private_orders?delivery_type=eq.bord&delivery_date=eq.${today()}&status=eq.utkast&select=id`)
     ]);
-    ST._bordBadge = pending.length + confirmed.length;
+    ST._bordBadge = pending.length + confirmed.length + privateToday.length;
     renderNav();
   } catch(e) { ST._bordBadge = 0; }
 }
