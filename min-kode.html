@@ -88,11 +88,12 @@ body {
 }
 .promo-item:last-child { margin-bottom: 0; }
 .promo-name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-.dots { font-size: 22px; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
-.dot-filled { color: var(--green); }
-.dot-empty { color: rgba(0,0,0,0.15); }
+.dots { font-size: 26px; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
+.dot-filled { color: #2a7d1f; }
+.dot-empty { color: rgba(0,0,0,0.25); }
 @media (prefers-color-scheme: dark) {
-  .dot-empty { color: rgba(255,255,255,0.15); }
+  .dot-filled { color: #7dde6a; }
+  .dot-empty { color: rgba(255,255,255,0.3); }
 }
 .promo-status { font-size: 12px; color: var(--text2); }
 .reward-banner {
@@ -192,7 +193,7 @@ async function loadPromos() {
     const need  = r.stamps_required;
     const ready = count >= need;
     const dots  = Array.from({length: need}, (_, i) =>
-      `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">●</span>`
+      `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">${i < count ? '●' : '○'}</span>`
     ).join('');
 
     return `

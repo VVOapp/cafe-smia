@@ -63,7 +63,7 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 #scan-frame { position: absolute; inset: 12%; border: 3px solid rgba(255,255,255,0.85); border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 999px rgba(0,0,0,0.35); }
 
 .product-name { font-size: 14px; font-weight: 700; }
-.dots { font-size: 22px; letter-spacing: 3px; margin: 6px 0; line-height: 1; }
+.dots { font-size: 30px; letter-spacing: 4px; margin: 8px 0; line-height: 1; }
 .dot-filled { color: #3B8C2A; text-shadow: 0 0 4px rgba(59,140,42,0.35); }
 .dot-empty { color: var(--text3); opacity: 0.45; }
 .progress-label { font-size: 12px; color: var(--text2); font-weight: 600; margin-bottom: 4px; }
@@ -248,7 +248,7 @@ function renderRuleCard(rule) {
       <div class="reward-banner">🎉 Gratis ${esc(rule.productName)}!</div>
       <button class="btn btn-green btn-sm" style="width:100%;margin-top:5px" onclick="redeem(${rule.id})">✔ Løs inn og nullstill</button>
     ` : `
-      <button class="btn btn-primary btn-sm" style="width:100%;margin-top:4px" onclick="addStamp(${rule.id})">+1 stempel</button>
+      <button class="btn btn-primary" style="width:100%;margin-top:8px;font-size:16px;padding:14px" onclick="addStamp(${rule.id})">+1 stempel</button>
     `}
   </div>`;
 }
