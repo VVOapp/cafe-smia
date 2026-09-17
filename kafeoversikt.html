@@ -3877,6 +3877,10 @@ function buildCpModal() {
       <input type="checkbox" id="cp-external" ${p.available_for_external?'checked':''} style="width:18px;height:18px;cursor:pointer">
       <span style="font-size:0.82rem;color:var(--text2)">(vises i bestillingsskjema for eksterne)</span>
     </div>
+    <div class="form-row">
+      <label>Eksternpris (kr) <span style="font-weight:400;color:var(--text2)">— brukes i bekreftelse-e-post for eksternbestillinger</span></label>
+      <input type="number" id="cp-external-price" min="0" step="0.5" placeholder="La stå tom for å bruke vanlig utsalgspris" value="${p.external_price != null ? p.external_price : ''}">
+    </div>
     <div class="form-row" style="align-items:center;gap:10px">
       <label style="margin:0">🚫 Trenger ikke oppskrift</label>
       <input type="checkbox" id="cp-norecipe" ${p.no_recipe_needed?'checked':''} style="width:18px;height:18px;cursor:pointer">
@@ -3934,17 +3938,19 @@ async function saveCafeProduct(id) {
   const available_for_table    = el('cp-table')?.checked    !== false;
   const available_for_external = el('cp-external')?.checked || false;
   const no_recipe_needed       = el('cp-norecipe')?.checked  || false;
+  const extPriceRaw = el('cp-external-price')?.value?.trim();
+  const external_price = extPriceRaw !== '' ? parseFloat(extPriceRaw) : null;
   const minStockRaw = el('cp-minstock')?.value?.trim();
   const min_stock = minStockRaw !== '' ? parseFloat(minStockRaw) : null;
   if (!name) { showAlert('Navn er påkrevd', 'error'); return; }
 
   try {
     if (id) {
-      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
+      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
       const idx = ST.cafeProducts.findIndex(p => p.id === id);
-      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
+      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
     } else {
-      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
+      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
       ST.cafeProducts.push(np);
     }
     ST._cpModal = null;
@@ -4920,12 +4926,13 @@ async function confirmRequest(id, email, name, invoiceTo) {
     };
     ST._ordreRows = items.map((i, idx) => {
       const prod = ST.cafeProducts.find(p => p.name === i.name);
+      const unitPrice = prod?.external_price ?? prod?.selling_price ?? 0;
       return {
         id: Date.now() + idx,
         product_name: i.name,
         quantity: i.qty || 1,
-        unit_price: prod?.selling_price || 0,
-        total_price: (i.qty||1) * (prod?.selling_price||0)
+        unit_price: unitPrice,
+        total_price: (i.qty||1) * unitPrice
       };
     });
     ST.subTab.bestilling = 'ny';
@@ -4974,12 +4981,13 @@ async function reopenConfirmedRequest(id, email, name, invoiceTo) {
     };
     ST._ordreRows = items.map((i, idx) => {
       const prod = ST.cafeProducts.find(p => p.name === i.name);
+      const unitPrice = prod?.external_price ?? prod?.selling_price ?? 0;
       return {
         id: Date.now() + idx,
         product_name: i.name,
         quantity: i.qty || 1,
-        unit_price: prod?.selling_price || 0,
-        total_price: (i.qty||1) * (prod?.selling_price||0)
+        unit_price: unitPrice,
+        total_price: (i.qty||1) * unitPrice
       };
     });
     ST.subTab.bestilling = 'ny';
