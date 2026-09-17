@@ -121,9 +121,9 @@ body {
 
   <!-- Promotions -->
   <div class="promos" id="promos" style="display:none">
-    <div class="promos-header">
-      <span>🎁</span>
-      <strong>Pågående tilbud</strong>
+    <div class="promos-header" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:8px"><span>🎁</span><strong>Pågående tilbud</strong></div>
+      <button onclick="loadPromos()" style="background:rgba(255,255,255,0.2);border:none;border-radius:6px;color:white;font-size:12px;font-weight:600;padding:4px 10px;cursor:pointer">↻ Oppdater</button>
     </div>
     <div id="promos-list"><div class="promos-loading">Laster…</div></div>
   </div>
@@ -210,6 +210,14 @@ async function loadPromos() {
 }
 
 loadPromos();
+
+// Refresh whenever the customer brings the page back to the foreground
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') loadPromos();
+});
+
+// Also poll every 8 seconds so stamps appear automatically while watching
+setInterval(() => { if (document.visibilityState === 'visible') loadPromos(); }, 8000);
 </script>
 </body>
 </html>

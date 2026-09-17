@@ -63,9 +63,9 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 #scan-frame { position: absolute; inset: 12%; border: 3px solid rgba(255,255,255,0.85); border-radius: 16px; pointer-events: none; box-shadow: 0 0 0 999px rgba(0,0,0,0.35); }
 
 .product-name { font-size: 14px; font-weight: 700; }
-.dots { font-size: 18px; letter-spacing: 2px; margin: 3px 0; line-height: 1; }
-.dot-filled { color: var(--accent); }
-.dot-empty { color: var(--border2); }
+.dots { font-size: 22px; letter-spacing: 3px; margin: 6px 0; line-height: 1; }
+.dot-filled { color: #3B8C2A; text-shadow: 0 0 4px rgba(59,140,42,0.35); }
+.dot-empty { color: var(--text3); opacity: 0.45; }
 .progress-label { font-size: 12px; color: var(--text2); font-weight: 600; margin-bottom: 4px; }
 .reward-banner { background: linear-gradient(135deg,#3B6D11,#5a9e1f); color: white; border-radius: var(--radius-sm); padding: 7px 10px; font-weight: 700; font-size: 13px; margin: 5px 0; text-align: center; }
 .customer-chip { font-size: 11px; color: var(--text3); font-family: monospace; word-break: break-all; }
@@ -238,7 +238,7 @@ function renderRuleCard(rule) {
   const need = rule.stamps_required;
   const ready = count >= need;
   let dots = '';
-  for (let i = 0; i < need; i++) dots += `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">●</span>`;
+  for (let i = 0; i < need; i++) dots += `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">${i < count ? '●' : '○'}</span>`;
   return `
   <div class="card">
     <div class="product-name">${esc(rule.productName)}</div>
