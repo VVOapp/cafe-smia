@@ -4902,8 +4902,12 @@ async function confirmRequest(id, email, name, invoiceTo) {
     ST._pendingRequests = Math.max(0, (ST._pendingRequests||1) - 1);
     renderNav();
 
-    // Fetch full request
-    const [r] = await sbGet(`order_requests?id=eq.${id}`);
+    // Fetch full request + refresh products so external_price is current
+    const [[r], freshProds] = await Promise.all([
+      sbGet(`order_requests?id=eq.${id}`),
+      sbGet('cafe_products?select=*&order=name')
+    ]);
+    if (freshProds.length) ST.cafeProducts = freshProds;
     const items = Array.isArray(r?.items) ? r.items : JSON.parse(r?.items||'[]');
 
     // Pre-fill the order form so user can review and save
@@ -4958,7 +4962,11 @@ async function confirmRequest(id, email, name, invoiceTo) {
 async function reopenConfirmedRequest(id, email, name, invoiceTo) {
   // Re-fills the order form from a confirmed (but unsaved) request without changing DB status
   try {
-    const [r] = await sbGet(`order_requests?id=eq.${id}`);
+    const [[r], freshProds] = await Promise.all([
+      sbGet(`order_requests?id=eq.${id}`),
+      sbGet('cafe_products?select=*&order=name')
+    ]);
+    if (freshProds.length) ST.cafeProducts = freshProds;
     if (!r) { showAlert('Kunne ikke hente forespørsel', 'error'); return; }
     const items = Array.isArray(r.items) ? r.items : JSON.parse(r?.items||'[]');
 
