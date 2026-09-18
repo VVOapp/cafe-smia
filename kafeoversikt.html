@@ -5309,7 +5309,7 @@ function showOrdreProductSugg(rowId, input) {
          document.getElementById('or-sugg-${rowId}').style.display='none';
        })()">
       <span>${esc(p.name)}</span>
-      <span style="font-size:0.78rem;color:var(--text2)">${fmt(p.selling_price)}</span>
+      <span style="font-size:0.78rem;color:var(--text2)">${fmt(p.external_price ?? p.selling_price)}</span>
     </div>`
   ).join('');
   dropdown.style.display = 'block';
@@ -5341,8 +5341,9 @@ function updateOrdreGrandTotal() {
 function autofillPrice(id, productName) {
   const p = ST.cafeProducts.find(p => p.name.toLowerCase() === productName.toLowerCase());
   if (!p) return;
+  const unitPrice = p.external_price ?? p.selling_price;
   const row = (ST._ordreRows||[]).find(r => r.id === id);
-  if (row) { row.unit_price = p.selling_price; calcOrdreRow(id); }
+  if (row) { row.unit_price = unitPrice; calcOrdreRow(id); }
 
   // Auto-append kaffekanne note if not already present
   if (productName.toLowerCase().includes('kanne')) {
@@ -5357,7 +5358,7 @@ function autofillPrice(id, productName) {
   const rowEl = el('or-' + id);
   if (rowEl) {
     const inputs = rowEl.querySelectorAll('input[type="number"]');
-    if (inputs[1]) inputs[1].value = p.selling_price;
+    if (inputs[1]) inputs[1].value = unitPrice;
   }
 }
 
@@ -5449,9 +5450,19 @@ async function saveOrdre(id) {
 
 async function editOrdre(id) {
   try {
-    const [order] = await sbGet(`private_orders?id=eq.${id}&select=*,private_order_items(*)`);
+    const [[order], freshProds] = await Promise.all([
+      sbGet(`private_orders?id=eq.${id}&select=*,private_order_items(*)`),
+      sbGet('cafe_products?select=*&order=name')
+    ]);
+    if (freshProds.length) ST.cafeProducts = freshProds;
+    const prodByName = Object.fromEntries(freshProds.map(p => [p.name.toLowerCase(), p]));
     ST._ordreEdit = order;
-    ST._ordreRows = (order.private_order_items||[]).map(i => ({ ...i, id: i.id || Date.now() }));
+    ST._ordreRows = (order.private_order_items||[]).map(i => {
+      const prod = prodByName[i.product_name?.toLowerCase()];
+      const unit_price = prod?.external_price ?? i.unit_price;
+      const total_price = (i.quantity || 1) * unit_price;
+      return { ...i, id: i.id || Date.now(), unit_price, total_price };
+    });
     ST.subTab.bestilling = 'ny';
     await renderTab();
   } catch(e) {
