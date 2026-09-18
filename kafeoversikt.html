@@ -3815,7 +3815,7 @@ async function buildKaffeprodukter() {
           <td style="font-weight:500">${esc(p.name)}${p.made_to_order ? ' <span title="Lages på bestilling — vises ikke i daglig rapport" style="font-size:0.75rem;background:#e8f0fb;color:#4a90d9;border-radius:4px;padding:1px 5px;font-weight:400;vertical-align:middle">bestilling</span>' : ''}</td>
           <td>${esc(p.category||'—')}</td>
           <td style="text-align:center">${recipeBadge}</td>
-          <td style="text-align:right">${fmt(p.selling_price)}</td>
+          <td style="text-align:right">${fmt(p.selling_price)}${p.external_price != null ? `<br><span style="font-size:0.78rem;font-style:italic;color:var(--text2)" title="Eksternpris">ext: ${fmt(p.external_price)}</span>` : ''}</td>
           <td style="white-space:nowrap;text-align:right">
             <button class="btn btn-sm btn-icon" onclick="openCpModal(${p.id})">✏️</button>
             <button class="btn btn-sm btn-danger btn-icon" onclick="deleteCafeProduct(${p.id})">🗑️</button>
