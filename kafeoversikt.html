@@ -5394,7 +5394,8 @@ async function saveOrdre(id) {
     invoice_to:    enhet    || null,
     contact_name:  contact  || null,
     org_nr, invoice_address, invoice_ref, email, delivery_type,
-    order_date: date, delivery_date: date, order_time, end_time, location, num_people, allergies, note
+    order_date: date, delivery_date: date, order_time, location, num_people, allergies, note,
+    ...(end_time ? { end_time } : {})
   };
 
   try {
