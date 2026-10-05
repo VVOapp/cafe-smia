@@ -34,25 +34,18 @@ body {
   box-shadow: 0 4px 24px rgba(0,0,0,0.1); overflow: hidden;
 }
 
-/* ── Branded header ── */
 .card-header {
   background: var(--accent);
   padding: 1.25rem 1.5rem 1rem;
   text-align: center;
-  position: relative;
 }
 .card-header .cafe-name {
   font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
   text-transform: uppercase; color: rgba(255,255,255,0.65); margin-bottom: 2px;
 }
-.card-header h1 {
-  font-size: 1.25rem; font-weight: 700; color: #ffffff;
-}
-.card-header .sub {
-  font-size: 12.5px; color: rgba(255,255,255,0.6); margin-top: 3px;
-}
+.card-header h1 { font-size: 1.25rem; font-weight: 700; color: #ffffff; }
+.card-header .sub { font-size: 12.5px; color: rgba(255,255,255,0.6); margin-top: 3px; }
 
-/* ── QR section ── */
 .card-body { padding: 1.5rem; text-align: center; }
 #qr-box {
   display: inline-block; padding: 14px; background: white;
@@ -65,20 +58,75 @@ body {
   padding: 10px 12px; text-align: left;
 }
 
+/* ── Phone setup form ── */
+.phone-form { padding: 1.5rem; }
+.phone-form p { font-size: 14px; color: var(--text2); margin-bottom: 1.25rem; text-align: left; }
+.phone-form label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 6px; text-align: left; }
+.phone-form input[type="tel"] {
+  width: 100%; padding: 13px 14px; font-size: 16px;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--bg2); color: var(--text);
+  outline: none; transition: border-color 0.15s;
+  margin-bottom: 10px;
+}
+.phone-form input[type="tel"]:focus { border-color: var(--accent); }
+.btn-primary {
+  width: 100%; padding: 13px; font-size: 15px; font-weight: 700;
+  background: var(--accent); color: white; border: none; border-radius: 10px;
+  cursor: pointer; margin-bottom: 1rem;
+}
+.btn-primary:active { opacity: 0.85; }
+.error-box {
+  font-size: 13px; color: #A32D2D; background: #FCEBEB;
+  border: 1px solid #F09595; border-radius: 8px;
+  padding: 8px 12px; margin-bottom: 10px; text-align: left;
+}
+
+/* ── Upgrade banner ── */
+.upgrade-banner {
+  margin: 1rem 1.5rem 0;
+  background: #fff9ee; border: 1px solid #f0d060; border-radius: 10px;
+  padding: 12px 14px;
+}
+.upgrade-banner .ub-title { font-size: 13px; font-weight: 700; color: #856404; margin-bottom: 5px; }
+.upgrade-banner .ub-desc  { font-size: 12px; color: #856404; margin-bottom: 10px; }
+.upgrade-banner .ub-row   { display: flex; gap: 8px; }
+.upgrade-banner input[type="tel"] {
+  flex: 1; padding: 8px 10px; font-size: 14px;
+  border: 1px solid #e6d5a0; border-radius: 8px;
+  background: #fffdf5; color: var(--text); outline: none;
+}
+.upgrade-banner input[type="tel"]:focus { border-color: #856404; }
+.upgrade-banner .ub-btn {
+  padding: 8px 14px; font-size: 13px; font-weight: 700;
+  background: #856404; color: white; border: none;
+  border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.upgrade-banner .ub-skip {
+  background: none; border: none; color: var(--text3);
+  font-size: 11px; cursor: pointer; margin-top: 8px; padding: 0; display: block;
+}
+.upgrade-banner .ub-error { font-size: 12px; color: #A32D2D; margin-top: 6px; }
+
+/* ── Phone label below QR ── */
+.phone-label {
+  font-size: 13px; font-weight: 600; color: var(--text2);
+  margin-top: -10px; margin-bottom: 1rem;
+}
+.change-link {
+  background: none; border: none; color: var(--text3);
+  font-size: 12px; cursor: pointer; text-decoration: underline;
+  display: block; margin: 0 auto 1rem;
+}
+
 /* ── Promotions ── */
 .promos { padding: 0 1.5rem 1.5rem; }
-
 .promos-header {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   background: var(--green); border-radius: 10px;
   padding: 10px 14px; margin-bottom: 10px;
 }
-.promos-header span { font-size: 16px; }
-.promos-header strong {
-  font-size: 13px; font-weight: 700; color: #ffffff;
-  letter-spacing: 0.02em;
-}
-
+.promos-header strong { font-size: 13px; font-weight: 700; color: #ffffff; letter-spacing: 0.02em; }
 .promo-item {
   background: var(--green-light);
   border: 1px solid rgba(58,92,56,0.2);
@@ -87,13 +135,13 @@ body {
   padding: 12px 14px; margin-bottom: 8px;
 }
 .promo-item:last-child { margin-bottom: 0; }
-.promo-name { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
-.dots { font-size: 26px; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
-.dot-filled { color: #2a7d1f; }
-.dot-empty { color: rgba(0,0,0,0.25); }
+.promo-name  { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.dots        { font-size: 26px; letter-spacing: 4px; line-height: 1; margin-bottom: 5px; }
+.dot-filled  { color: #2a7d1f; }
+.dot-empty   { color: rgba(0,0,0,0.25); }
 @media (prefers-color-scheme: dark) {
   .dot-filled { color: #7dde6a; }
-  .dot-empty { color: rgba(255,255,255,0.3); }
+  .dot-empty  { color: rgba(255,255,255,0.3); }
 }
 .promo-status { font-size: 12px; color: var(--text2); }
 .reward-banner {
@@ -102,6 +150,16 @@ body {
   font-weight: 700; font-size: 13px; text-align: center; margin-top: 6px;
 }
 .promos-loading { font-size: 13px; color: var(--text3); text-align: center; padding: 8px 0; }
+
+/* ── Migration note ── */
+.migration-note {
+  margin: 0 1.5rem 1rem;
+  padding: 10px 14px;
+  background: var(--green-light);
+  border: 1px solid rgba(58,92,56,0.2);
+  border-radius: 10px;
+  font-size: 12px; color: var(--green);
+}
 </style>
 </head>
 <body>
@@ -114,15 +172,50 @@ body {
     <div class="sub">Vis koden i kassen når du bestiller</div>
   </div>
 
-  <!-- QR code -->
-  <div class="card-body">
-    <div id="qr-box"></div>
-    <div class="tip">💡 Koden lagres automatisk på denne enheten — bare skann plakaten på nytt så er du tilbake. Ingen registrering nødvendig.</div>
+  <!-- ① Phone entry form (new users) -->
+  <div id="phone-setup" class="phone-form" style="display:none">
+    <p>Skriv inn telefonnummeret ditt én gang. Stemplene dine knyttes til nummeret — du mister dem aldri, selv om du bytter nettleser eller enhet.</p>
+    <label for="phone-input">Telefonnummer</label>
+    <input type="tel" id="phone-input" placeholder="+47 123 45 678" autocomplete="tel"
+      onkeydown="if(event.key==='Enter')savePhone()">
+    <div id="phone-error" class="error-box" style="display:none"></div>
+    <button class="btn-primary" onclick="savePhone()">Lagre og vis min kode →</button>
+    <div class="tip">🔒 Nummeret brukes kun til å identifisere deg i lojalitetsprogrammet hos Smia Kafé og deles ikke med noen.</div>
+  </div>
+
+  <!-- ② QR view (phone-based or old UUID) -->
+  <div id="qr-section" style="display:none">
+
+    <!-- Upgrade banner (old UUID users only) -->
+    <div id="upgrade-banner" class="upgrade-banner" style="display:none">
+      <div class="ub-title">⚠️ Gammel kode — kan forsvinne</div>
+      <div class="ub-desc">Legg til telefonnummer for å sikre poengene dine permanent, uansett enhet eller nettleser.</div>
+      <div class="ub-row">
+        <input type="tel" id="upgrade-phone" placeholder="+47 123 45 678" autocomplete="tel"
+          onkeydown="if(event.key==='Enter')doUpgrade()">
+        <button class="ub-btn" onclick="doUpgrade()">Sikre poeng</button>
+      </div>
+      <div id="upgrade-error" class="ub-error" style="display:none"></div>
+      <button class="ub-skip" onclick="this.closest('.upgrade-banner').style.display='none'">Ikke nå</button>
+    </div>
+
+    <!-- Migration success note (shown once after upgrade) -->
+    <div id="migration-note" class="migration-note" style="display:none">
+      ✅ Telefonnummer lagret! Eventuelle tidligere poeng kan overføres av personalet ved ditt neste besøk.
+    </div>
+
+    <div class="card-body">
+      <div id="qr-box"></div>
+      <div id="phone-label" class="phone-label"></div>
+      <div class="tip" id="qr-tip"></div>
+    </div>
+
+    <button class="change-link" onclick="changePhone()">Endre telefonnummer</button>
   </div>
 
   <!-- Promotions -->
   <div class="promos" id="promos" style="display:none">
-    <div class="promos-header" style="justify-content:space-between">
+    <div class="promos-header">
       <div style="display:flex;align-items:center;gap:8px"><span>🎁</span><strong>Pågående tilbud</strong></div>
       <button onclick="loadPromos()" style="background:rgba(255,255,255,0.2);border:none;border-radius:6px;color:white;font-size:12px;font-weight:600;padding:4px 10px;cursor:pointer">↻ Oppdater</button>
     </div>
@@ -145,44 +238,153 @@ async function sbGet(path) {
   } catch(e) { return []; }
 }
 
-// Stable anonymous code
-function uuid() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+// ── Phone normalisation ────────────────────────────────────────
+function normalizePhone(raw) {
+  let s = String(raw).replace(/[\s\-().]/g, '');
+  if (s.startsWith('00')) s = '+' + s.slice(2);
+  // Norwegian 8-digit numbers without country code
+  if (!s.startsWith('+') && /^\d{8}$/.test(s)) s = '+47' + s;
+  return s;
 }
-let code = localStorage.getItem('smia_loyalty_id');
-if (!code) { code = uuid(); localStorage.setItem('smia_loyalty_id', code); }
+function isValidPhone(s) {
+  return /^\+\d{8,15}$/.test(s);
+}
 
-new QRCode(document.getElementById('qr-box'), {
-  text: code, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M
-});
+// ── Startup ────────────────────────────────────────────────────
+const storedPhone = (() => { try { return localStorage.getItem('smia_loyalty_phone'); } catch(e) { return null; } })();
+const storedId    = (() => { try { return localStorage.getItem('smia_loyalty_id');    } catch(e) { return null; } })();
+const isOldUUID   = storedId && /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(storedId);
 
-// Register customer in Supabase silently if they don't exist yet,
-// so they appear in statistics as soon as they scan the promotion QR.
-fetch(SUPABASE_URL + '/rest/v1/loyalty_customers', {
-  method: 'POST',
-  headers: {
-    'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=minimal,resolution=ignore-duplicates'
-  },
-  body: JSON.stringify([{ id: code }])
-}).catch(() => {});
+let activeCode = null;
 
-// Load promotions + personal progress
+if (storedPhone) {
+  activeCode = normalizePhone(storedPhone);
+  showQR(activeCode, storedPhone, false);
+} else if (isOldUUID) {
+  activeCode = storedId;
+  showQR(storedId, null, true);
+} else {
+  document.getElementById('phone-setup').style.display = '';
+  document.getElementById('phone-input').focus();
+}
+
+// ── Show QR ────────────────────────────────────────────────────
+function showQR(id, displayPhone, showUpgrade) {
+  activeCode = id;
+  document.getElementById('qr-section').style.display = '';
+
+  const box = document.getElementById('qr-box');
+  if (!box.querySelector('canvas,img')) {
+    new QRCode(box, { text: id, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+  }
+
+  const labelEl = document.getElementById('phone-label');
+  const tipEl   = document.getElementById('qr-tip');
+  if (displayPhone) {
+    labelEl.textContent = displayPhone;
+    tipEl.textContent   = '💡 Koden er knyttet til telefonnummeret ditt — skriv inn nummeret på nytt på denne siden hvis du noen gang bytter enhet.';
+  } else {
+    labelEl.style.display = 'none';
+    tipEl.textContent = '💡 Koden lagres på denne enheten. Legg til telefonnummer ovenfor for å aldri miste poengene dine.';
+  }
+
+  if (showUpgrade) {
+    document.getElementById('upgrade-banner').style.display = '';
+  }
+
+  // Silent register in Supabase
+  fetch(SUPABASE_URL + '/rest/v1/loyalty_customers', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=minimal,resolution=ignore-duplicates'
+    },
+    body: JSON.stringify([{ id }])
+  }).catch(() => {});
+
+  loadPromos();
+}
+
+// ── Save phone (new user) ──────────────────────────────────────
+function savePhone() {
+  const raw        = document.getElementById('phone-input').value.trim();
+  const normalized = normalizePhone(raw);
+  const errEl      = document.getElementById('phone-error');
+
+  if (!isValidPhone(normalized)) {
+    errEl.textContent   = 'Skriv inn et gyldig telefonnummer, f.eks. +47 123 45 678 eller bare 12345678.';
+    errEl.style.display = '';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  try {
+    localStorage.setItem('smia_loyalty_phone', raw);
+    localStorage.setItem('smia_loyalty_id', normalized);
+  } catch(e) {}
+
+  document.getElementById('phone-setup').style.display = 'none';
+  showQR(normalized, raw, false);
+}
+
+// ── Upgrade (old UUID → phone) ─────────────────────────────────
+function doUpgrade() {
+  const raw        = document.getElementById('upgrade-phone').value.trim();
+  const normalized = normalizePhone(raw);
+  const errEl      = document.getElementById('upgrade-error');
+
+  if (!isValidPhone(normalized)) {
+    errEl.textContent   = 'Ugyldig nummer — prøv f.eks. 12345678 eller +47 123 45 678.';
+    errEl.style.display = '';
+    return;
+  }
+  errEl.style.display = 'none';
+
+  const oldId = storedId;
+  try {
+    localStorage.setItem('smia_loyalty_phone', raw);
+    localStorage.setItem('smia_loyalty_id', normalized);
+    if (oldId) localStorage.setItem('smia_loyalty_id_old', oldId);
+  } catch(e) {}
+
+  document.getElementById('upgrade-banner').style.display = 'none';
+  document.getElementById('migration-note').style.display = '';
+
+  // Replace QR with phone-based one
+  document.getElementById('qr-box').innerHTML = '';
+  document.getElementById('phone-label').style.display = '';
+  showQR(normalized, raw, false);
+}
+
+// ── Change phone ───────────────────────────────────────────────
+function changePhone() {
+  if (!confirm('Er du sikker? Dersom du bytter nummer, mister du tilgang til poengene dine med det gamle nummeret. Personalet kan hjelpe med overføring ved neste besøk.')) return;
+  try {
+    localStorage.removeItem('smia_loyalty_phone');
+    localStorage.removeItem('smia_loyalty_id');
+  } catch(e) {}
+  document.getElementById('qr-section').style.display = 'none';
+  document.getElementById('promos').style.display     = 'none';
+  document.getElementById('qr-box').innerHTML         = '';
+  document.getElementById('phone-setup').style.display = '';
+  document.getElementById('phone-input').value         = '';
+  document.getElementById('phone-input').focus();
+}
+
+// ── Load promotions ────────────────────────────────────────────
 async function loadPromos() {
+  if (!activeCode) return;
+
   const [rules, products, stamps] = await Promise.all([
     sbGet('loyalty_rules?active=eq.true&select=*&order=id'),
     sbGet('cafe_products?select=id,name'),
-    sbGet('loyalty_stamps?customer_id=eq.' + encodeURIComponent(code) + '&redeemed_at=is.null&select=rule_id')
+    sbGet('loyalty_stamps?customer_id=eq.' + encodeURIComponent(activeCode) + '&redeemed_at=is.null&select=rule_id')
   ]);
 
   if (!rules.length) return;
 
-  const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+  const nameById   = Object.fromEntries(products.map(p => [p.id, p.name]));
   const countByRule = {};
   for (const s of stamps) countByRule[s.rule_id] = (countByRule[s.rule_id] || 0) + 1;
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -195,7 +397,6 @@ async function loadPromos() {
     const dots  = Array.from({length: need}, (_, i) =>
       `<span class="${i < count ? 'dot-filled' : 'dot-empty'}">${i < count ? '●' : '○'}</span>`
     ).join('');
-
     return `
     <div class="promo-item">
       <div class="promo-name">${name}</div>
@@ -210,14 +411,9 @@ async function loadPromos() {
   document.getElementById('promos').style.display = '';
 }
 
-loadPromos();
-
-// Refresh whenever the customer brings the page back to the foreground
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') loadPromos();
 });
-
-// Also poll every 8 seconds so stamps appear automatically while watching
 setInterval(() => { if (document.visibilityState === 'visible') loadPromos(); }, 8000);
 </script>
 </body>
