@@ -281,14 +281,16 @@ function buildApp(){
 
 function hasUnchecked(o){
   const cl=o.checklist||{};
+  const rej=o.rejected_items||{};
   return (o.items||[]).some(function(i){
-    return itemCheckKeys(i).some(function(k){return !(k in cl);});
+    return itemCheckKeys(i).some(function(k){return !(k in cl)&&!(k in rej);});
   });
 }
 
 function allCheckKeys(o){
   const keys=[];
-  (o.items||[]).forEach(function(i){itemCheckKeys(i).forEach(function(k){keys.push(k);});});
+  const rej=o.rejected_items||{};
+  (o.items||[]).forEach(function(i){itemCheckKeys(i).forEach(function(k){if(!(k in rej))keys.push(k);});});
   return keys;
 }
 
@@ -1017,10 +1019,17 @@ async function deleteOrder(id){if(!confirm("Slette denne bestillingen?"))return;
 async function toggleRejectItem(orderId, key){
   const o=S.orders.find(x=>x.id===orderId);if(!o)return;
   const rej={...o.rejected_items||{}};
+  const wasRejected=!!rej[key];
   if(rej[key]){ delete rej[key]; } else { rej[key]=true; }
+  // Un-rejecting an item on a delivered order that hasn't been picked up → revert to accepted
+  const update={rejected_items:rej};
+  if(wasRejected&&o.status==="delivered"&&!((o.checklist||{})[key])){
+    update.status="accepted";
+  }
   try{
-    await db.updateOrder(orderId,{rejected_items:rej});
+    await db.updateOrder(orderId,update);
     o.rejected_items=rej;
+    if(update.status)o.status=update.status;
     render();
   }catch(e){showAlert("Feil: "+e.message,"error");}
 }
@@ -1036,6 +1045,11 @@ async function togglePickup(orderId,key){
   try{
     await db.updateOrder(orderId,{checklist:cl});
     o.checklist=cl;
+    // If unchecking an item on a delivered order, revert status to accepted
+    if(!allDone&&o.status==="delivered"){
+      await db.updateOrder(orderId,{status:"accepted"});
+      o.status="accepted";
+    }
     render();
     // If all done, ask for explicit confirmation before marking delivered
     if(allDone){
