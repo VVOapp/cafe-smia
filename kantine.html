@@ -515,11 +515,19 @@ function buildCanteen(){
       html+='<div class="card-header"><span class="card-title">Bestilling #'+o.id+' \u2014 '+weekLabel(o.week)+'</span><span class="badge badge-accepted">godkjent</span><div class="spacer"></div><span style="font-size:13px;color:var(--text2)">'+done+'/'+tot+' hentet</span></div>';
       html+='<div class="pickup-progress"><div class="pickup-bar" style="width:'+pct+'%"></div></div>';
       if(allDone)html+='<div class="pickup-done-banner">Alle varer hentet! &#x2713;</div>';
+      const rej=o.rejected_items||{};
       (o.items||[]).forEach(function(i){
         const p=getProd(i.pid);if(!p)return;
         if(i.splits&&i.splits.length>0){
           i.splits.forEach(function(sp,idx){
             const key=i.pid+"_"+idx;
+            if(rej[key]){
+              html+='<div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;opacity:0.55">'
+                +'<span style="text-decoration:line-through;color:var(--text3);flex:1">'+p.name+(i.splits.length>1?' ('+sp.day+')':'')+' \u2014 '+fmtQty(sp.qty)+'&nbsp;'+p.unit+'</span>'
+                +'<span style="font-size:11px;background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;white-space:nowrap">Str\u00f8ket</span>'
+                +'</div>';
+              return;
+            }
             const isDone=key in cl;
             const inSplit=((o.item_notes||{})[key]||"").replace(/"/g,"&quot;");
             html+='<div style="padding:10px 12px;border-bottom:1px solid var(--border)">';
@@ -534,6 +542,13 @@ function buildCanteen(){
           });
         } else {
           const key=String(i.pid);
+          if(rej[key]){
+            html+='<div style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;opacity:0.55">'
+              +'<span style="text-decoration:line-through;color:var(--text3);flex:1">'+p.name+' \u2014 '+fmtQty(i.qty)+'&nbsp;'+p.unit+'</span>'
+              +'<span style="font-size:11px;background:#fee2e2;color:#991b1b;padding:2px 7px;border-radius:4px;white-space:nowrap">Str\u00f8ket</span>'
+              +'</div>';
+            return;
+          }
           const isDone=key in cl;
           const inNote=((o.item_notes||{})[key]||"").replace(/"/g,"&quot;");
           html+='<div style="padding:10px 12px;border-bottom:1px solid var(--border)">';
