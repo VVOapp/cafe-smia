@@ -793,14 +793,8 @@ function buildModal(){
     html+='<h3>'+(p.id?"Rediger produkt":"Legg til produkt")+'</h3>';
     html+='<div class="form-row"><label>Produktnavn</label><input type="text" id="p-name" value="'+p.name+'"></div>';
     if(isAdmin()){
-      const baseCost=p.price?(Math.round(p.price/1.5*100)/100):0;
       html+='<div class="grid2"><div class="form-row"><label>Enhet (f.eks. kg, liter, boks)</label><input type="text" id="p-unit" value="'+p.unit+'"></div>';
-      html+='<div class="form-row"><label>Kantinens ingredienskostnad (kr)</label><input type="number" id="p-cost" value="'+baseCost+'" min="0" step="0.01" oninput="(function(){var v=parseFloat(document.getElementById(\'p-cost\').value)||0;document.getElementById(\'p-price-preview\').textContent=\'= kr \'+(Math.round(v*1.5*100)/100).toFixed(2);})()"></div></div>';
-      html+='<div style="font-size:12px;color:var(--text2);background:var(--bg2);border-radius:8px;padding:8px 12px;margin-bottom:0.75rem;display:flex;align-items:center;gap:6px">'
-        +'<span>Faktisk pris (× 1,5):</span>'
-        +'<strong id="p-price-preview">= kr '+(Math.round(baseCost*1.5*100)/100).toFixed(2)+'</strong>'
-        +'<span style="color:var(--text3);font-size:11px;margin-left:4px">— dette er prisen som lagres</span>'
-        +'</div>';
+      html+='<div class="form-row"><label>Pris per enhet (kr)</label><input type="number" id="p-price" value="'+p.price+'" min="0" step="0.01"></div></div>';
     } else {
       html+='<div class="form-row"><label>Enhet (f.eks. kg, liter, boks)</label><input type="text" id="p-unit" value="'+p.unit+'"></div>';
     }
@@ -1112,8 +1106,8 @@ function openEditProd(id){const p=S.products.find(function(x){return x.id===id;}
 async function saveProd(){
   const name=document.getElementById("p-name").value.trim();
   const unit=document.getElementById("p-unit").value.trim();
-  const costEl=document.getElementById("p-cost");
-  const price=costEl?Math.round(parseFloat(costEl.value||0)*1.5*100)/100:0;
+  const priceEl=document.getElementById("p-price");
+  const price=priceEl?parseFloat(priceEl.value)||0:0;
   const note=document.getElementById("p-note").value.trim();
   const sort_order=S.products.length;
   if(!name||!unit){showAlert("Fyll inn navn og enhet.","error");return;}
