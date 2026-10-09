@@ -3845,8 +3845,24 @@ function buildCpModal() {
           onblur="setTimeout(()=>{const d=document.getElementById('cp-cat-sugg');if(d)d.style.display='none'},150)">
         <div id="cp-cat-sugg" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--border2);border-radius:0 0 6px 6px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,0.12);max-height:180px;overflow-y:auto"></div>
       </div>
-      <div class="form-row"><label>Salgspris (kr)</label><input type="number" id="cp-price" step="0.50" min="0" value="${esc(String(p.selling_price||0))}"></div>
+      <div class="form-row">
+        <label>Salgspris (kr)</label>
+        <input type="number" id="cp-price" step="0.50" min="0" value="${esc(String(p.selling_price||0))}">
+      </div>
     </div>
+    <details style="margin-bottom:0.75rem">
+      <summary style="font-size:0.82rem;color:var(--text2);cursor:pointer;user-select:none;padding:4px 0">🧮 Regn ut fra kantinens ingredienskostnad (× 1,5)</summary>
+      <div style="background:var(--bg2);border-radius:8px;padding:10px 12px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <input type="number" id="cp-cost-base" min="0" step="0.01" placeholder="Ingredienskostnad (kr)"
+          style="width:160px;font-size:0.9rem"
+          oninput="(function(){var v=parseFloat(document.getElementById('cp-cost-base').value)||0;var r=Math.round(v*1.5*100)/100;document.getElementById('cp-cost-result').textContent='= kr '+r.toFixed(2);document.getElementById('cp-cost-use-btn').dataset.val=r;})()">
+        <span style="color:var(--text2);font-size:0.85rem">× 1,5</span>
+        <strong id="cp-cost-result" style="min-width:80px">= kr 0.00</strong>
+        <button type="button" id="cp-cost-use-btn" data-val="0" class="btn btn-sm"
+          onclick="document.getElementById('cp-price').value=parseFloat(this.dataset.val).toFixed(2)"
+          style="font-size:0.8rem">→ Bruk som salgspris</button>
+      </div>
+    </details>
     <div class="grid2">
       <div class="form-row">
         <label>Lages på bestilling</label>
