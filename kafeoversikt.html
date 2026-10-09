@@ -4282,8 +4282,11 @@ async function buildOppskriftEditor() {
       <thead><tr><th>Ingrediens</th><th>Mengde</th><th>Enhet</th><th style="text-align:right">Pris/enhet</th><th style="text-align:right">Kostpris</th><th></th></tr></thead>
       <tbody>
         ${ingRows.map(r => {
-          const cpp  = calcCostPerRecipeUnit(r.ingredients||{});
-          const warn = ingNeedsInfo(r.ingredients||{});
+          const cpp      = calcCostPerRecipeUnit(r.ingredients||{});
+          const warn     = ingNeedsInfo(r.ingredients||{});
+          const rowUnit  = r.unit || r.ingredients?.recipe_unit || r.ingredients?.unit || 'stk';
+          const unitOpts = ['stk','kg','liter','pakke','dl','pose','boks','g','ml','skive','neve','blad','hode','brød','flaske']
+            .map(u => `<option value="${u}" ${u===rowUnit?'selected':''}>${u}</option>`).join('');
           return `<tr style="${warn?'background:#fffbf0':''}">
           <td>
             ${esc(r.ingredients?.name||'?')}
@@ -4294,7 +4297,9 @@ async function buildOppskriftEditor() {
               style="width:60px;text-align:right;font-size:0.88rem;padding:2px 4px"
               onchange="saveRecipeItemQty(${r.id}, this.value, this)">
           </td>
-          <td>${esc(r.ingredients?.recipe_unit||r.ingredients?.unit||'')}</td>
+          <td>
+            <select style="font-size:0.85rem;padding:2px 4px;min-width:60px" onchange="saveRecipeItemUnit(${r.id}, this.value)">${unitOpts}</select>
+          </td>
           <td style="text-align:right">${fmt(cpp)}</td>
           <td style="text-align:right" id="recipe-item-total-${r.id}">${fmt(cpp*r.quantity)}</td>
           <td style="white-space:nowrap">
@@ -4307,11 +4312,14 @@ async function buildOppskriftEditor() {
 
     <div class="section-label">Legg til ingrediens</div>
     <div class="row" style="flex-wrap:nowrap;gap:8px;margin-bottom:1.5rem">
-      <select id="recipe-ing" style="flex:2">
+      <select id="recipe-ing" style="flex:2" onchange="recipeIngChanged()">
         <option value="">Velg ingrediens...</option>
-        ${ST.ingredients.map(i => `<option value="${i.id}">${ingNeedsInfo(i) ? '⚠️ ' : ''}${esc(i.name)} (${esc(i.recipe_unit||i.unit)})</option>`).join('')}
+        ${ST.ingredients.map(i => `<option value="${i.id}" data-unit="${esc(i.recipe_unit||i.unit||'stk')}">${ingNeedsInfo(i) ? '⚠️ ' : ''}${esc(i.name)} (${esc(i.recipe_unit||i.unit)})</option>`).join('')}
       </select>
       <input type="text" inputmode="decimal" id="recipe-qty" placeholder="Mengde" style="flex:1;min-width:80px">
+      <select id="recipe-unit" style="flex:0 0 auto;min-width:70px">
+        ${['stk','kg','liter','pakke','dl','pose','boks','g','ml','skive','neve','blad','hode','brød','flaske'].map(u=>`<option>${u}</option>`).join('')}
+      </select>
       <button class="btn btn-primary" onclick="addRecipeItem(${selectedId})">Legg til</button>
     </div>
 
@@ -4364,7 +4372,7 @@ async function printRecipe(productId) {
         ${ingRows.map(r => `<tr>
           <td>${r.ingredients?.name || '?'}</td>
           <td>${fmtN(r.quantity)}</td>
-          <td>${r.ingredients?.recipe_unit || r.ingredients?.unit || ''}</td>
+          <td>${r.unit || r.ingredients?.recipe_unit || r.ingredients?.unit || ''}</td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -4410,14 +4418,32 @@ async function printRecipe(productId) {
   w.onload = () => { w.focus(); w.print(); };
 }
 
+function recipeIngChanged() {
+  const sel = document.getElementById('recipe-ing');
+  if (!sel || !sel.value) return;
+  const unit = sel.options[sel.selectedIndex]?.dataset?.unit || 'stk';
+  const unitSel = document.getElementById('recipe-unit');
+  if (unitSel) { for (const o of unitSel.options) o.selected = (o.value === unit); }
+}
+
 async function addRecipeItem(productId) {
   const ingId = parseInt(el('recipe-ing')?.value);
   const qty   = parseFloat((el('recipe-qty')?.value||'').replace(',','.'));
+  const unit  = el('recipe-unit')?.value || null;
   if (!ingId || !qty || qty <= 0) { showAlert('Velg ingrediens og oppgi mengde', 'error'); return; }
   try {
-    await sbPost('recipe_items', [{ cafe_product_id: productId, ingredient_id: ingId, quantity: qty }]);
+    await sbPost('recipe_items', [{ cafe_product_id: productId, ingredient_id: ingId, quantity: qty, unit }]);
     showAlert('Ingrediens lagt til oppskrift!');
     await renderTab();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+}
+
+async function saveRecipeItemUnit(id, unit) {
+  try {
+    await sbPatch(`recipe_items?id=eq.${id}`, { unit });
+    showAlert('Enhet oppdatert');
   } catch(e) {
     showAlert('Feil: ' + e.message, 'error');
   }
