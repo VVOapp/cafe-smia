@@ -3400,10 +3400,12 @@ async function buildOppskrift() {
     <button class="${subTab==='produkter'?'active':''}" onclick="ST.subTab.oppskrift='produkter';renderTab()">🛍️ Salgsprodukter</button>
     <button class="${subTab==='ingredienser'?'active':''}" onclick="ST.subTab.oppskrift='ingredienser';renderTab()">🥫 Ingredienser</button>
     <button class="${subTab==='oppskrifter'?'active':''}" onclick="ST.subTab.oppskrift='oppskrifter';renderTab()">📋 Oppskrifter</button>
+    <button class="${subTab==='kantinekobling'?'active':''}" onclick="ST.subTab.oppskrift='kantinekobling';renderTab()">🏭 Kantinekobling</button>
   </div>
-  ${subTab==='produkter'    ? await buildKaffeprodukter() : ''}
-  ${subTab==='ingredienser' ? await buildIngredienser() : ''}
-  ${subTab==='oppskrifter'  ? await buildOppskriftEditor() : ''}`;
+  ${subTab==='produkter'      ? await buildKaffeprodukter() : ''}
+  ${subTab==='ingredienser'   ? await buildIngredienser() : ''}
+  ${subTab==='oppskrifter'    ? await buildOppskriftEditor() : ''}
+  ${subTab==='kantinekobling' ? buildKantinekobling() : ''}`;
 }
 
 function ingNeedsInfo(i) {
@@ -3852,6 +3854,13 @@ function buildCpModal() {
       </div>
     </div>
     <div class="form-row">
+      <label>Kilde fra kantinen <span style="font-weight:400;color:var(--text2)">— kobler til et kantineprodukt og henter pris automatisk</span></label>
+      <select id="cp-canteen-id" onchange="(function(){var sel=document.getElementById('cp-canteen-id');var price=parseFloat(sel.options[sel.selectedIndex].dataset.price||0);if(price>0){document.getElementById('cp-canteen-cost').value=price.toFixed(2);}})()">
+        <option value="">— Ikke koblet —</option>
+        ${ST.kantineProducts.map(kp=>`<option value="${kp.id}" data-price="${kp.price||0}" ${kp.id==p.canteen_product_id?'selected':''}>${esc(kp.name)} (${fmt(kp.price||0)})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row">
       <label>Innkjøpspris fra kantinen (kr) <span style="font-weight:400;color:var(--text2)">— hva SMIA betaler kantinen</span></label>
       <input type="number" id="cp-canteen-cost" step="0.01" min="0" value="${esc(String(p.canteen_cost||0))}">
     </div>
@@ -3915,6 +3924,101 @@ function buildCpModal() {
   </div></div>`;
 }
 
+function buildKantinekobling() {
+  const kpList = ST.kantineProducts || [];
+  if (kpList.length === 0) return '<div class="empty">Ingen kantineprodukter lastet. Oppdater siden.</div>';
+
+  // Build lookup maps
+  const ingByKpId = {};
+  (ST.ingredients || []).forEach(i => {
+    if (i.canteen_product_id) {
+      if (!ingByKpId[i.canteen_product_id]) ingByKpId[i.canteen_product_id] = [];
+      ingByKpId[i.canteen_product_id].push(i);
+    }
+  });
+  const cpByKpId = {};
+  (ST.cafeProducts || []).forEach(cp => {
+    if (cp.canteen_product_id) {
+      if (!cpByKpId[cp.canteen_product_id]) cpByKpId[cp.canteen_product_id] = [];
+      cpByKpId[cp.canteen_product_id].push(cp);
+    }
+  });
+
+  let driftCount = 0;
+  const rows = kpList.map(kp => {
+    const ings = ingByKpId[kp.id] || [];
+    const cps  = cpByKpId[kp.id]  || [];
+    const kpPrice = parseFloat(kp.price) || 0;
+
+    // Check for price drift
+    const ingDrift = ings.filter(i => {
+      const ip = parseFloat(i.purchase_price || i.cost_per_unit) || 0;
+      return ip > 0 && Math.abs(ip - kpPrice) > 0.01;
+    });
+    const cpDrift = cps.filter(cp => {
+      const cc = parseFloat(cp.canteen_cost) || 0;
+      return cc > 0 && Math.abs(cc - kpPrice) > 0.01;
+    });
+    const hasDrift = ingDrift.length > 0 || cpDrift.length > 0;
+    if (hasDrift) driftCount++;
+
+    const ingCell = ings.length > 0
+      ? ings.map(i => {
+          const ip = parseFloat(i.purchase_price || i.cost_per_unit) || 0;
+          const drift = ip > 0 && Math.abs(ip - kpPrice) > 0.01;
+          return `<span style="display:inline-block;margin-bottom:2px">${esc(i.name)}${drift ? ` <span title="Pris avviker: ${fmt(ip)} ≠ ${fmt(kpPrice)}" style="color:#c0392b;font-size:0.75rem">⚠️ ${fmt(ip)}</span>` : ''}</span>`;
+        }).join('<br>')
+      : '<span style="color:var(--text3)">—</span>';
+
+    const cpCell = cps.length > 0
+      ? cps.map(cp => {
+          const cc = parseFloat(cp.canteen_cost) || 0;
+          const drift = cc > 0 && Math.abs(cc - kpPrice) > 0.01;
+          return `<span style="display:inline-block;margin-bottom:2px">${esc(cp.name)}${drift ? ` <span title="Pris avviker: ${fmt(cc)} ≠ ${fmt(kpPrice)}" style="color:#c0392b;font-size:0.75rem">⚠️ ${fmt(cc)}</span>` : ''}</span>`;
+        }).join('<br>')
+      : '<span style="color:var(--text3)">—</span>';
+
+    const linked = ings.length > 0 || cps.length > 0;
+    return `<tr style="${hasDrift?'background:#fff8f0':''}">
+      <td style="font-weight:500">${esc(kp.name)}</td>
+      <td style="text-align:right;font-weight:600">${fmt(kpPrice)}</td>
+      <td>${ingCell}</td>
+      <td>${cpCell}</td>
+      <td style="text-align:center">${linked
+        ? (hasDrift
+            ? '<span style="color:#c0392b;font-weight:600">⚠️ Avvik</span>'
+            : '<span style="color:#27ae60;font-weight:600">✅ OK</span>')
+        : '<span style="color:var(--text3);font-size:0.82rem">Ikke koblet</span>'
+      }</td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="card">
+    <div class="card-header">
+      <span class="card-title">Kantinekobling (${kpList.length} produkter)</span>
+      <div class="spacer"></div>
+      ${driftCount > 0 ? `<span style="background:#fff0e0;color:#c0392b;border:1px solid #f5c6a0;border-radius:6px;padding:3px 10px;font-size:0.82rem;font-weight:600">⚠️ ${driftCount} prisavvik</span>` : '<span style="color:#27ae60;font-size:0.82rem;font-weight:600">✅ Alle priser synkronisert</span>'}
+    </div>
+    <p style="font-size:0.82rem;color:var(--text2);margin-bottom:0.75rem">
+      Oversikt over alle kantineprodukter og hva de er koblet til i kafeoversikt.
+      Priser redigeres i <strong>kantine.html → Produkter</strong>. Kobling settes i Salgsprodukter- eller Ingredienser-skjema.
+      Et ⚠️ betyr at en koblet post har en annen pris lagret enn det kantinen bruker nå.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Kantineprodukt</th>
+          <th style="text-align:right">Kantine&shy;pris</th>
+          <th>Koblet ingrediens</th>
+          <th>Koblet salgsprodukt</th>
+          <th style="text-align:center">Status</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function showCatSugg(input) {
   const dropdown = document.getElementById('cp-cat-sugg');
   if (!dropdown) return;
@@ -3955,7 +4059,8 @@ async function saveCafeProduct(id) {
   const name          = el('cp-name')?.value?.trim();
   const cat           = el('cp-cat')?.value?.trim() || null;
   const price         = parseFloat(el('cp-price')?.value) || 0;
-  const canteen_cost  = parseFloat(el('cp-canteen-cost')?.value) || 0;
+  const canteen_cost       = parseFloat(el('cp-canteen-cost')?.value) || 0;
+  const canteen_product_id = parseInt(el('cp-canteen-id')?.value) || null;
   const made_to_order        = el('cp-mto')?.value === 'true';
   const auto_canteen_produce = el('cp-autokanteen')?.value === 'true';
   const available_for_table    = el('cp-table')?.checked    !== false;
@@ -3969,11 +4074,11 @@ async function saveCafeProduct(id) {
 
   try {
     if (id) {
-      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
+      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, canteen_cost, canteen_product_id, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
       const idx = ST.cafeProducts.findIndex(p => p.id === id);
-      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
+      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, canteen_cost, canteen_product_id, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
     } else {
-      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
+      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, canteen_cost, canteen_product_id, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
       ST.cafeProducts.push(np);
     }
     ST._cpModal = null;
