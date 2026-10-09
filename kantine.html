@@ -794,7 +794,17 @@ function buildModal(){
     html+='<div class="form-row"><label>Produktnavn</label><input type="text" id="p-name" value="'+p.name+'"></div>';
     if(isAdmin()){
       html+='<div class="grid2"><div class="form-row"><label>Enhet (f.eks. kg, liter, boks)</label><input type="text" id="p-unit" value="'+p.unit+'"></div>';
-      html+='<div class="form-row"><label>Pris per enhet (kr)</label><input type="number" id="p-price" value="'+p.price+'" min="0" step="0.01"></div></div>';
+      html+='<div class="form-row"><label>Pris per enhet (kr) <span style="font-weight:400;font-size:0.8rem;color:var(--text2)">— det SMIA betaler kantinen</span></label><input type="number" id="p-price" value="'+p.price+'" min="0" step="0.01" oninput="pPriceChanged()"></div></div>';
+      html+='<details id="p-calc-details" style="margin:0 0 12px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;background:var(--bg2)">'
+        +'<summary style="cursor:pointer;font-size:0.85rem;font-weight:600;color:var(--text2);list-style:none">🧮 Regn ut fra kantinens ingredienskostnad (× 1,5)</summary>'
+        +'<div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">'
+        +'<div><div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:3px">Ingredienskostnad (kr)</div>'
+        +'<input type="number" id="p-cost-base" min="0" step="0.01" placeholder="0.00" style="width:110px" oninput="pCalcUpdate()"></div>'
+        +'<div style="font-size:1.1rem;color:var(--text2);padding-top:18px">× 1,5 =</div>'
+        +'<div><div style="font-size:0.78rem;font-weight:600;color:var(--text2);margin-bottom:3px">Pris til SMIA (kr)</div>'
+        +'<strong id="p-cost-result" style="font-size:1.1rem;color:var(--primary)">kr 0.00</strong></div>'
+        +'<div style="padding-top:18px"><button class="btn btn-sm" type="button" onclick="pUseCalcPrice()" style="white-space:nowrap">→ Sett som pris</button></div>'
+        +'</div></details>';
     } else {
       html+='<div class="form-row"><label>Enhet (f.eks. kg, liter, boks)</label><input type="text" id="p-unit" value="'+p.unit+'"></div>';
     }
@@ -1103,6 +1113,23 @@ function viewHistoryOrder(id){const o=S.orders.find(function(x){return x.id===id
 
 function openAddProd(){S.editProduct={id:null,name:"",unit:"",price:0,note:""};S.modal="product";render();}
 function openEditProd(id){const p=S.products.find(function(x){return x.id===id;});S.editProduct={...p};S.modal="product";render();}
+function pCalcUpdate(){
+  const base=parseFloat(document.getElementById("p-cost-base")?.value)||0;
+  const result=Math.round(base*1.5*100)/100;
+  const el=document.getElementById("p-cost-result");
+  if(el)el.textContent="kr "+result.toFixed(2);
+}
+function pUseCalcPrice(){
+  const base=parseFloat(document.getElementById("p-cost-base")?.value)||0;
+  const result=Math.round(base*1.5*100)/100;
+  const priceEl=document.getElementById("p-price");
+  if(priceEl)priceEl.value=result.toFixed(2);
+}
+function pPriceChanged(){
+  // If user types directly in price, clear the calc base to avoid confusion
+  const calcDetails=document.getElementById("p-calc-details");
+  if(calcDetails&&!calcDetails.open)return;
+}
 async function saveProd(){
   const name=document.getElementById("p-name").value.trim();
   const unit=document.getElementById("p-unit").value.trim();
