@@ -3917,6 +3917,7 @@ function buildCpModal() {
       <input type="checkbox" id="cp-norecipe" ${p.no_recipe_needed?'checked':''} style="width:18px;height:18px;cursor:pointer">
       <span style="font-size:0.82rem;color:var(--text2)">(f.eks. bøker, ferdigvarer — skjuler oppskrift-advarsel)</span>
     </div>
+    <div id="cp-modal-error" style="color:#c0392b;font-size:0.85rem;min-height:1.2em;padding:4px 0;"></div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="saveCafeProduct(${p.id||0})">${isNew?'Legg til':'Lagre'}</button>
       <button class="btn" onclick="closeCpModal()">Avbryt</button>
@@ -4085,7 +4086,14 @@ async function saveCafeProduct(id) {
     showAlert('Produkt lagret!');
     await renderTab();
   } catch(e) {
-    showAlert('Feil: ' + e.message, 'error');
+    const modalErr = document.getElementById('cp-modal-error');
+    if (modalErr) {
+      let msg = e.message;
+      try { const j = JSON.parse(msg); msg = j.message || j.hint || msg; } catch(_) {}
+      modalErr.textContent = 'Feil: ' + msg;
+    } else {
+      showAlert('Feil: ' + e.message, 'error');
+    }
   }
 }
 
