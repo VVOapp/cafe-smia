@@ -3792,7 +3792,7 @@ async function buildKaffeprodukter() {
     </div>
     ${prods.length === 0 ? '<div class="empty">Ingen produkter ennå</div>' : `
     <table>
-      <thead><tr><th>Navn</th><th>Kategori</th><th style="text-align:center">Oppskrift</th><th style="text-align:right">Salgspris</th><th></th></tr></thead>
+      <thead><tr><th>Navn</th><th>Kategori</th><th style="text-align:center">Oppskrift</th><th style="text-align:right">Innkjøpspris</th><th style="text-align:right">Salgspris</th><th></th></tr></thead>
       <tbody>
         ${prods.map(p => {
           const hasRecipe = hasRecipeSet.has(p.id);
@@ -3815,6 +3815,7 @@ async function buildKaffeprodukter() {
           <td style="font-weight:500">${esc(p.name)}${p.made_to_order ? ' <span title="Lages på bestilling — vises ikke i daglig rapport" style="font-size:0.75rem;background:#e8f0fb;color:#4a90d9;border-radius:4px;padding:1px 5px;font-weight:400;vertical-align:middle">bestilling</span>' : ''}</td>
           <td>${esc(p.category||'—')}</td>
           <td style="text-align:center">${recipeBadge}</td>
+          <td style="text-align:right">${p.canteen_cost>0?fmt(p.canteen_cost):'<span style="color:var(--text3)">—</span>'}</td>
           <td style="text-align:right">${fmt(p.selling_price)}${p.external_price != null ? `<br><span style="font-size:0.78rem;font-style:italic;color:var(--text2)" title="Eksternpris">ext: ${fmt(p.external_price)}</span>` : ''}</td>
           <td style="white-space:nowrap;text-align:right">
             <button class="btn btn-sm btn-icon" onclick="openCpModal(${p.id})">✏️</button>
@@ -3850,17 +3851,22 @@ function buildCpModal() {
         <input type="number" id="cp-price" step="0.50" min="0" value="${esc(String(p.selling_price||0))}">
       </div>
     </div>
-    <details style="margin-bottom:0.75rem">
-      <summary style="font-size:0.82rem;color:var(--text2);cursor:pointer;user-select:none;padding:4px 0">🧮 Regn ut fra kantinens ingredienskostnad (× 1,5)</summary>
+    <div class="form-row">
+      <label>Innkjøpspris fra kantinen (kr) <span style="font-weight:400;color:var(--text2)">— hva SMIA betaler kantinen</span></label>
+      <input type="number" id="cp-canteen-cost" step="0.01" min="0" value="${esc(String(p.canteen_cost||0))}">
+    </div>
+    <details style="margin-bottom:0.75rem"${p.canteen_cost>0?' open':''}>
+      <summary style="font-size:0.82rem;color:var(--text2);cursor:pointer;user-select:none;padding:4px 0">🧮 Regn ut fra ingredienskostnad (× 1,5)</summary>
       <div style="background:var(--bg2);border-radius:8px;padding:10px 12px;margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <input type="number" id="cp-cost-base" min="0" step="0.01" placeholder="Ingredienskostnad (kr)"
+          value="${p.canteen_cost>0?Math.round(p.canteen_cost/1.5*100)/100:''}"
           style="width:160px;font-size:0.9rem"
           oninput="(function(){var v=parseFloat(document.getElementById('cp-cost-base').value)||0;var r=Math.round(v*1.5*100)/100;document.getElementById('cp-cost-result').textContent='= kr '+r.toFixed(2);document.getElementById('cp-cost-use-btn').dataset.val=r;})()">
         <span style="color:var(--text2);font-size:0.85rem">× 1,5</span>
-        <strong id="cp-cost-result" style="min-width:80px">= kr 0.00</strong>
-        <button type="button" id="cp-cost-use-btn" data-val="0" class="btn btn-sm"
-          onclick="document.getElementById('cp-price').value=parseFloat(this.dataset.val).toFixed(2)"
-          style="font-size:0.8rem">→ Bruk som salgspris</button>
+        <strong id="cp-cost-result" style="min-width:80px">= kr ${p.canteen_cost>0?(p.canteen_cost).toFixed(2):'0.00'}</strong>
+        <button type="button" id="cp-cost-use-btn" data-val="${p.canteen_cost||0}" class="btn btn-sm"
+          onclick="document.getElementById('cp-canteen-cost').value=parseFloat(this.dataset.val).toFixed(2)"
+          style="font-size:0.8rem">→ Sett som innkjøpspris</button>
       </div>
     </details>
     <div class="grid2">
@@ -3949,6 +3955,7 @@ async function saveCafeProduct(id) {
   const name          = el('cp-name')?.value?.trim();
   const cat           = el('cp-cat')?.value?.trim() || null;
   const price         = parseFloat(el('cp-price')?.value) || 0;
+  const canteen_cost  = parseFloat(el('cp-canteen-cost')?.value) || 0;
   const made_to_order        = el('cp-mto')?.value === 'true';
   const auto_canteen_produce = el('cp-autokanteen')?.value === 'true';
   const available_for_table    = el('cp-table')?.checked    !== false;
@@ -3962,11 +3969,11 @@ async function saveCafeProduct(id) {
 
   try {
     if (id) {
-      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
+      await sbPatch(`cafe_products?id=eq.${id}`, { name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed });
       const idx = ST.cafeProducts.findIndex(p => p.id === id);
-      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
+      if (idx >= 0) ST.cafeProducts[idx] = { ...ST.cafeProducts[idx], name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_external, no_recipe_needed };
     } else {
-      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
+      const [np] = await sbPost('cafe_products', [{ name, category: cat, selling_price: price, canteen_cost, external_price, active: true, made_to_order, auto_canteen_produce, min_stock, available_for_table, available_for_external, no_recipe_needed }]);
       ST.cafeProducts.push(np);
     }
     ST._cpModal = null;
