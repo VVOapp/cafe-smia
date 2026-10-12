@@ -3393,6 +3393,15 @@ async function confirmChangeSalgDate(oldDate) {
 // =============================================================
 async function buildOppskrift() {
   const subTab = ST.subTab.oppskrift || 'ingredienser';
+  // Refresh live data so kantine prices and ingredient costs are always current
+  try {
+    const [freshIngs, freshKantine] = await Promise.all([
+      sbGet('ingredients?select=*&order=name'),
+      sbGet('products?select=*&order=name')
+    ]);
+    ST.ingredients     = freshIngs;
+    ST.kantineProducts = freshKantine;
+  } catch(e) { /* keep existing cache on failure */ }
   // Always refresh product cost cache so component costs in dropdowns are accurate
   await precomputeProductCosts();
   return `
@@ -4312,15 +4321,15 @@ async function buildOppskriftEditor() {
 
     <div class="section-label">Legg til ingrediens</div>
     <div class="row" style="flex-wrap:nowrap;gap:8px;margin-bottom:1.5rem">
-      <select id="recipe-ing" style="flex:2" onchange="recipeIngChanged()">
+      <select id="recipe-ing" style="flex:1;min-width:0" onchange="recipeIngChanged()">
         <option value="">Velg ingrediens...</option>
         ${ST.ingredients.map(i => `<option value="${i.id}" data-unit="${esc(i.recipe_unit||i.unit||'stk')}">${ingNeedsInfo(i) ? '⚠️ ' : ''}${esc(i.name)} (${esc(i.recipe_unit||i.unit)})</option>`).join('')}
       </select>
-      <input type="text" inputmode="decimal" id="recipe-qty" placeholder="Mengde" style="flex:1;min-width:80px">
-      <select id="recipe-unit" style="flex:0 0 auto;min-width:70px">
+      <input type="text" inputmode="decimal" id="recipe-qty" placeholder="Mengde" style="flex:0 0 80px">
+      <select id="recipe-unit" style="flex:0 0 70px;width:70px">
         ${['stk','kg','liter','pakke','dl','pose','boks','g','ml','skive','neve','blad','hode','brød','flaske'].map(u=>`<option>${u}</option>`).join('')}
       </select>
-      <button class="btn btn-primary" onclick="addRecipeItem(${selectedId})">Legg til</button>
+      <button class="btn btn-primary" style="flex:0 0 auto;white-space:nowrap" onclick="addRecipeItem(${selectedId})">Legg til</button>
     </div>
 
     <div class="section-label">Komponentprodukter (deler av en bundle)</div>
