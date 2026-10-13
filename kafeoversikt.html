@@ -1835,8 +1835,9 @@ async function savePurchase(supplierType) {
   // Total is the sum of inc-VAT row totals
   const total = validRows.reduce((s,r) => s + (r.total || 0), 0);
 
+  let receipt = null;
   try {
-    const [receipt] = await sbPost('purchase_receipts', [{
+    [receipt] = await sbPost('purchase_receipts', [{
       receipt_date: receiptDate,
       supplier_type: supplierType,
       supplier_name: supplierName || supplierType,
@@ -1901,6 +1902,10 @@ async function savePurchase(supplierType) {
     }
     await renderTab();
   } catch(e) {
+    // Roll back the receipt header if items were never written
+    if (receipt?.id) {
+      try { await sbDelete(`purchase_receipts?id=eq.${receipt.id}`); } catch(_) {}
+    }
     showAlert('Feil ved lagring: ' + e.message, 'error');
   }
 }
