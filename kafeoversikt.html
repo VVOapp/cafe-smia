@@ -4938,21 +4938,15 @@ async function buildBestilling() {
 }
 
 async function buildBestillingHistorikk() {
-  let orders = [], tableRequests = [];
+  let orders = [];
   try { orders = await sbGet('private_orders?select=*,private_order_items(*)&order=order_date.desc'); } catch(e) {}
-  try { tableRequests = await sbGet('order_requests?order_type=eq.table&order=delivery_date.desc'); } catch(e) {}
 
   // Group all orders by school year
   const groups = {};
   orders.filter(o => o.order_date).forEach(o => {
     const sy = schoolYearLabel(o.order_date);
-    if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
+    if (!groups[sy]) groups[sy] = { orders: [] };
     groups[sy].orders.push(o);
-  });
-  tableRequests.filter(r => r.delivery_date).forEach(r => {
-    const sy = schoolYearLabel(r.delivery_date);
-    if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
-    groups[sy].requests.push(r);
   });
 
   const syKeys = Object.keys(groups).sort().reverse();
@@ -5006,25 +5000,16 @@ async function buildBestillingHistorikk() {
       </div>`;
     }).join('');
 
-  const requestRows = g.requests.map(r => `
-    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
-      <div style="flex:1;min-width:180px">
-        <div style="font-weight:600">${esc(r.invoice_to||r.contact_name||'—')} <span style="font-size:11px;color:var(--text3);font-weight:400">🪑 Bordreservasjon</span></div>
-        <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(r.delivery_date)}${r.delivery_time?' kl. '+esc(r.delivery_time):''}${r.num_people?' · 👥 '+r.num_people+' gjester':''}</div>
-      </div>
-      <span style="font-size:0.78rem;font-weight:600;color:var(--text2)">${r.status==='confirmed'?'✅ Fullført':r.status==='dismissed'?'❌ Avslått':esc(r.status)}</span>
-    </div>`).join('');
-
   return `<div class="card">
     <div class="card-header">
       <span class="card-title">📁 Historikk</span>
       <select style="width:auto;min-width:130px" onchange="ST._historikkSY=this.value;renderTab()">
         ${syKeys.map(sy => `<option value="${sy}" ${sy===activeSY?'selected':''}>Skoleår ${sy}</option>`).join('')}
       </select>
-      <span style="font-size:12px;color:var(--text2)">${g.orders.length + g.requests.length} ordre</span>
+      <span style="font-size:12px;color:var(--text2)">${g.orders.length} ordre</span>
     </div>
-    ${orderRows}${requestRows || ''}
-    ${g.orders.length === 0 && g.requests.length === 0 ? '<div class="empty">Ingen ordre dette skoleåret</div>' : ''}
+    ${orderRows}
+    ${g.orders.length === 0 ? '<div class="empty">Ingen ordre dette skoleåret</div>' : ''}
   </div>`;
 }
 
