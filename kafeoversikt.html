@@ -628,14 +628,12 @@ function getTabs(role) {
       { id: 'bestilling', label: '📑 Bestilling' },
       { id: 'innsikt',    label: '💡 Innsikt' },
       { id: 'lojalitet',  label: '🎟️ Lojalitet' },
-      { id: 'lager',      label: '📦 Lager' },
     ];
   }
   return [
     { id: 'innkjop',    label: '🛒 Innkjøp' },
     { id: 'daglig',     label: '📋 Daglig' },
     { id: 'bestilling', label: '📑 Bestilling' },
-    { id: 'lager',      label: '📦 Lager' },
   ];
 }
 
@@ -693,9 +691,7 @@ function renderNav() {
     if (t.id === 'innkjop' && ST._kantineUnsynced > 0) {
       label += ` <span style="background:#e6a817;color:white;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;vertical-align:middle;margin-left:2px">${ST._kantineUnsynced}</span>`;
     }
-    if (t.id === 'lager' && ST._lagerLow > 0) {
-      label += ` <span style="background:#e53935;color:white;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;vertical-align:middle;margin-left:2px">${ST._lagerLow}</span>`;
-    }
+
     if (t.id === 'bestilling' && ST._pendingRequests > 0) {
       label += ` <span style="background:#e53935;color:white;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;vertical-align:middle;margin-left:2px">${ST._pendingRequests}</span>`;
     }
@@ -4586,7 +4582,8 @@ async function buildBord() {
   const pending           = allRequests.filter(r => r.status === 'pending');
   const confirmedUpcoming = allRequests.filter(r => r.status === 'table_confirmed' && r.delivery_date >= todayStr);
   const past              = allRequests.filter(r => r.status === 'table_confirmed' && r.delivery_date < todayStr);
-  const completed         = allRequests.filter(r => r.status === 'confirmed' || r.status === 'dismissed');
+  const dismissed         = allRequests.filter(r => r.status === 'dismissed');
+  // confirmed → private_order was created, lives in Alle ordre — not shown here
 
   // Only show current school year in this tab; older ones go to Historikk
   const currentSYOrders   = privateTableOrders.filter(o => !o.delivery_date || o.delivery_date >= currentSYStart);
@@ -4716,31 +4713,20 @@ async function buildBord() {
       ${past.map(r => bookingCard(r, 'past')).join('')}
     </div>` : ''}
 
-    ${completed.length > 0 ? `
-    <div class="card">
-      <div class="card-header"><span class="card-title" style="color:var(--text2)">Fullførte / avslåtte</span></div>
-      ${completed.map(r => bookingCard(r, '')).join('')}
-    </div>` : ''}
-
     ${activePrivate.length > 0 ? `
     <div class="card" style="margin-bottom:1rem">
       <div class="card-header"><span class="card-title">🪑 Bordbestillinger</span></div>
       ${activePrivate.map(o => privateCard(o)).join('')}
     </div>` : ''}
 
-    ${pastPrivate.length > 0 ? `
+    ${dismissed.length > 0 ? `
     <div class="card" style="margin-bottom:1rem">
-      <div class="card-header"><span class="card-title" style="color:var(--text2)">Tidligere bordbestillinger</span></div>
-      ${pastPrivate.map(o => privateCard(o)).join('')}
+      <div class="card-header"><span class="card-title" style="color:var(--text2)">❌ Avslåtte forespørsler</span></div>
+      ${dismissed.map(r => bookingCard(r, '')).join('')}
     </div>` : ''}
 
-    ${paidPrivate.length > 0 ? `
-    <div class="card" style="margin-bottom:1rem">
-      <div class="card-header"><span class="card-title" style="color:var(--text2)">Betalte bordbestillinger</span></div>
-      ${paidPrivate.map(o => privateCard(o)).join('')}
-    </div>` : ''}
-
-    ${allRequests.length === 0 && privateTableOrders.length === 0 ? `<div class="card"><div class="empty">Ingen bordbookinger ennå</div></div>` : ''}
+    ${pending.length === 0 && confirmedUpcoming.length === 0 && past.length === 0 && activePrivate.length === 0 && dismissed.length === 0
+      ? `<div class="card"><div class="empty">Ingen bordbookinger ennå — fullførte ordre finnes i Alle ordre</div></div>` : ''}
   </div>`;
 }
 
@@ -5080,7 +5066,9 @@ async function buildOrdreForesporsler() {
   try { requests = await sbGet('order_requests?order=created_at.desc'); } catch(e) {}
 
   const pending   = requests.filter(r => r.status === 'pending');
-  const handled   = requests.filter(r => r.status !== 'pending');
+  // confirmed → became an order (Alle ordre) or active booking (Bord) — not shown here
+  // table_confirmed → still active in Bord — not shown here
+  const handled   = requests.filter(r => r.status === 'dismissed');
 
   const statusBadge = s => {
     if (s === 'confirmed') return `<span style="background:#e8f5e9;color:#2e7d32;border:1px solid #b2dfdb;border-radius:5px;padding:2px 9px;font-size:0.78rem;font-weight:600">✅ Bekreftet</span>`;
@@ -5145,7 +5133,7 @@ async function buildOrdreForesporsler() {
   </div>
   ${handled.length > 0 ? `
   <div class="card" style="margin-top:1rem">
-    <div class="card-header"><span class="card-title" style="color:var(--text2)">Tidligere forespørsler</span></div>
+    <div class="card-header"><span class="card-title" style="color:var(--text2)">❌ Avslåtte forespørsler</span></div>
     ${handled.map(r => renderCard(r, false)).join('')}
   </div>` : ''}`;
 }
