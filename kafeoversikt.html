@@ -4898,18 +4898,17 @@ async function buildBestilling() {
     } catch(e) { ST._pastLocations = []; }
   }
 
-  const subTab = ST.subTab.bestilling || (ST.role === 'admin' ? 'liste' : 'ordre');
+  const subTab = ST.subTab.bestilling || 'historikk';
 
   // Staff: simpler two-section nav
   if (ST.role !== 'admin') {
     return `
     <div class="sub-nav">
-      <button class="${subTab==='ordre'?'active':''}"     onclick="ST.subTab.bestilling='ordre';renderTab()">📋 Ordre</button>
+      <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">📋 Ordre</button>
       <button class="${subTab==='bord'?'active':''}"      onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord</button>
-      <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">🗂 Historikk</button>
       <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
     </div>
-    ${subTab === 'bord' ? await buildBord() : subTab === 'historikk' ? await buildBestillingHistorikk() : await buildOrdreListe()}`;
+    ${subTab === 'bord' ? await buildBord() : await buildBestillingHistorikk()}`;
   }
 
   // Admin: full flat sub-nav
@@ -4921,19 +4920,17 @@ async function buildBestilling() {
     : '';
 
   let content = '';
-  if      (subTab === 'liste')        content = await buildOrdreListe();
-  else if (subTab === 'ny')           content = buildOrdreForm();
+  if      (subTab === 'ny')           content = buildOrdreForm();
   else if (subTab === 'foresporsler') content = await buildOrdreForesporsler();
   else if (subTab === 'bord')         content = await buildBord();
-  else if (subTab === 'historikk')    content = await buildBestillingHistorikk();
+  else                                content = await buildBestillingHistorikk();
 
   return `
   <div class="sub-nav">
-    <button class="${subTab==='liste'?'active':''}" onclick="ST.subTab.bestilling='liste';renderTab()">📋 Alle ordre</button>
+    <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">📋 Ordre</button>
     <button class="${subTab==='ny'?'active':''}" onclick="ST.subTab.bestilling='ny';ST._ordreEdit=null;ST._ordreRows=null;ST._ordreFormState=null;renderTab()">+ Ny ordre</button>
     <button class="${subTab==='foresporsler'?'active':''}" onclick="ST.subTab.bestilling='foresporsler';renderTab()">📥 Forespørsler${reqBadge}</button>
     <button class="${subTab==='bord'?'active':''}" onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeSpan}</button>
-    <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">🗂 Historikk</button>
     ${ST._ordreEdit ? `<button class="active" style="pointer-events:none">✏️ Rediger ordre</button>` : ''}
     <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
   </div>
@@ -4945,59 +4942,90 @@ async function buildBestillingHistorikk() {
   try { orders = await sbGet('private_orders?select=*,private_order_items(*)&order=order_date.desc'); } catch(e) {}
   try { tableRequests = await sbGet('order_requests?order_type=eq.table&order=delivery_date.desc'); } catch(e) {}
 
-  // Only keep orders older than the current school year
-  const oldOrders = orders.filter(o => o.order_date && o.order_date < currentSYStart);
-  const oldRequests = tableRequests.filter(r => r.delivery_date && r.delivery_date < currentSYStart);
-
-  if (oldOrders.length === 0 && oldRequests.length === 0) {
-    return `<div class="card"><div class="empty">Ingen historikk ennå — tidligere skoleårs ordre vil dukke opp her automatisk.</div></div>`;
-  }
-
-  // Group by school year label
+  // Group all orders by school year
   const groups = {};
-  oldOrders.forEach(o => {
+  orders.filter(o => o.order_date).forEach(o => {
     const sy = schoolYearLabel(o.order_date);
     if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
     groups[sy].orders.push(o);
   });
-  oldRequests.forEach(r => {
+  tableRequests.filter(r => r.delivery_date).forEach(r => {
     const sy = schoolYearLabel(r.delivery_date);
     if (!groups[sy]) groups[sy] = { orders: [], requests: [] };
     groups[sy].requests.push(r);
   });
 
   const syKeys = Object.keys(groups).sort().reverse();
+  if (syKeys.length === 0) {
+    return `<div class="card"><div class="empty">Ingen ordre ennå</div></div>`;
+  }
 
-  return syKeys.map(sy => {
-    const g = groups[sy];
-    const orderRows = g.orders.map(o => {
+  const currentSY = schoolYearLabel(today());
+  const selectedSY = ST._historikkSY || currentSY;
+  // Ensure selected year exists; fall back to most recent
+  const activeSY = groups[selectedSY] ? selectedSY : syKeys[0];
+
+  const g = groups[activeSY];
+  const todayStr = today();
+  const orderRows = g.orders
+    .sort((a,b) => {
+      // Upcoming utkast first, then the rest descending by date
+      const aUp = a.order_date >= todayStr && a.status === 'utkast';
+      const bUp = b.order_date >= todayStr && b.status === 'utkast';
+      if (aUp !== bUp) return aUp ? -1 : 1;
+      return b.order_date.localeCompare(a.order_date);
+    })
+    .map(o => {
       const total = (o.private_order_items||[]).reduce((s,i) => s + Number(i.total_price||0), 0);
+      const isFuture = o.order_date >= todayStr && o.status === 'utkast';
+      const isSent   = o.status === 'sendt' || o.status === 'betalt';
+      const rowStyle = isFuture
+        ? 'background:#EBF5FF;border-left:3px solid #4a90d9;padding:10px 12px 10px 9px;'
+        : isSent ? 'background:#F6FBF0;border-left:3px solid #43a047;padding:10px 12px 10px 9px;' : 'padding:10px 12px;';
       const statusLabel = o.status==='utkast' ? 'Utkast' : o.status==='sendt' ? 'Sendt ✓' : 'Betalt ✓';
-      return `<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
+      const actionBtn = isSent
+        ? `<button class="btn btn-sm" onclick="printOrdre(${o.id})">🖨️ Skriv ut igjen</button>`
+        : `<button class="btn btn-sm btn-primary" onclick="sendAndPrintOrdre(${o.id})">🖨️ Send & skriv ut</button>`;
+      return `<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;${rowStyle}">
         <div style="flex:1;min-width:180px">
           <div style="font-weight:600">${esc(o.customer_name)}</div>
-          <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(o.order_date)}${o.delivery_type==='bord'?' · 🪑 Bord':''}</div>
+          <div style="font-size:12px;color:var(--text2)">
+            📅 ${fmtDate(o.order_date)}${o.order_time?' 🕐 '+esc(o.order_time):''}${o.end_time?'–'+esc(o.end_time):''}
+            ${o.delivery_type==='bord'?' · 🪑 Bord':''}
+            ${o.location?' · 📍 '+esc(o.location):''}
+            ${o.num_people?' · 👥 '+o.num_people+' pers.':''}
+          </div>
         </div>
+        ${isFuture?'<span class="badge" style="background:#d0eaff;color:#185FA5">📅 Kommende</span>':''}
         <span class="badge badge-${o.status}">${statusLabel}</span>
-        ${ST.role === 'admin' ? `<span style="font-weight:700;font-size:13px">${fmt(total)}</span>` : ''}
-        <button class="btn btn-sm" onclick="printStaffOrder(${o.id})" title="Personalark">📋</button>
+        ${ST.role==='admin'?`<span style="font-weight:700">${fmt(total)}</span>`:''}
+        ${ST.role==='admin'?`<button class="btn btn-sm" onclick="editOrdre(${o.id})">✏️ Rediger</button>`:''}
+        ${ST.role==='admin'?actionBtn:''}
+        <button class="btn btn-sm" onclick="printStaffOrder(${o.id})" title="Personalark">📋 Personalark</button>
+        ${ST.role==='admin'?`<button class="btn btn-sm btn-danger" onclick="deleteOrdre(${o.id})">🗑️</button>`:''}
       </div>`;
     }).join('');
 
-    const requestRows = g.requests.map(r => `
-      <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
-        <div style="flex:1;min-width:180px">
-          <div style="font-weight:600">${esc(r.invoice_to||r.contact_name||'—')} <span style="font-size:11px;color:var(--text3);font-weight:400">🪑 Bordreservasjon</span></div>
-          <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(r.delivery_date)}${r.delivery_time?' kl. '+esc(r.delivery_time):''}${r.num_people?' · 👥 '+r.num_people+' gjester':''}</div>
-        </div>
-        <span style="font-size:0.78rem;font-weight:600;color:var(--text2)">${r.status==='confirmed'?'✅ Fullført':r.status==='dismissed'?'❌ Avslått':esc(r.status)}</span>
-      </div>`).join('');
+  const requestRows = g.requests.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap;padding:10px 12px">
+      <div style="flex:1;min-width:180px">
+        <div style="font-weight:600">${esc(r.invoice_to||r.contact_name||'—')} <span style="font-size:11px;color:var(--text3);font-weight:400">🪑 Bordreservasjon</span></div>
+        <div style="font-size:12px;color:var(--text2)">📅 ${fmtDate(r.delivery_date)}${r.delivery_time?' kl. '+esc(r.delivery_time):''}${r.num_people?' · 👥 '+r.num_people+' gjester':''}</div>
+      </div>
+      <span style="font-size:0.78rem;font-weight:600;color:var(--text2)">${r.status==='confirmed'?'✅ Fullført':r.status==='dismissed'?'❌ Avslått':esc(r.status)}</span>
+    </div>`).join('');
 
-    return `<div class="card" style="margin-bottom:1rem">
-      <div class="card-header"><span class="card-title">📁 Skoleår ${sy}</span><span style="font-size:12px;color:var(--text2)">${g.orders.length + g.requests.length} ordre</span></div>
-      ${orderRows}${requestRows}
-    </div>`;
-  }).join('');
+  return `<div class="card">
+    <div class="card-header">
+      <span class="card-title">📁 Historikk</span>
+      <select style="width:auto;min-width:130px" onchange="ST._historikkSY=this.value;renderTab()">
+        ${syKeys.map(sy => `<option value="${sy}" ${sy===activeSY?'selected':''}>Skoleår ${sy}</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:var(--text2)">${g.orders.length + g.requests.length} ordre</span>
+    </div>
+    ${orderRows}${requestRows || ''}
+    ${g.orders.length === 0 && g.requests.length === 0 ? '<div class="empty">Ingen ordre dette skoleåret</div>' : ''}
+  </div>`;
 }
 
 async function buildOrdreListe() {
@@ -5491,7 +5519,7 @@ function buildOrdreForm() {
     </div>
     <div class="row" style="margin-top:1rem">
       <button class="btn btn-primary" onclick="saveOrdre(${e2.id||0})">💾 Lagre ordre</button>
-      <button class="btn" onclick="ST.subTab.bestilling='liste';ST._ordreEdit=null;ST._ordreRows=null;ST._ordreFormState=null;renderTab()">Avbryt</button>
+      <button class="btn" onclick="ST.subTab.bestilling='historikk';ST._ordreEdit=null;ST._ordreRows=null;ST._ordreFormState=null;renderTab()">Avbryt</button>
     </div>
   </div>`;
 }
@@ -5652,7 +5680,7 @@ async function saveOrdre(id) {
     ST._ordreEdit = null;
     ST._ordreRows = null;
     ST._ordreFormState = null;
-    ST.subTab.bestilling = 'liste';
+    ST.subTab.bestilling = 'historikk';
     showAlert('Ordre lagret!');
 
     // If this save was triggered from a confirmed forespørsel, open the confirmation email now
