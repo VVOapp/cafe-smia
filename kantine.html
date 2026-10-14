@@ -253,7 +253,7 @@ function buildApp(){
     [
       ["canteen","Bestillinger"+(canteenBadge>0?' <span class="badge-nav">'+canteenBadge+'</span>':"")],
       ["orders","Historikk"],
-      ...(isAdmin()?[["products","Produkter"+(missingPrice.length>0?' <span class="badge-nav">!</span>':"")],["invoice","Faktura"],["insights","Innsikt"]]:[])
+      ...(isAdmin()?[["products","Produkter"+(missingPrice.length>0?' <span class="badge-nav">!</span>':"")],["invoice","Faktura"+(getUnprintedInvoiceMonths().length>0?' <span class="badge-nav">!</span>':"")],["insights","Innsikt"]]:[])
     ];
   let html='<div>';
   html+='<header>';
@@ -671,6 +671,30 @@ function buildInvoice(){
       });
     });
     html+='</div>';
+    const printedDate=getInvoicePrintedDate(ym);
+    const now=new Date();
+    const currentYm=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+    const isPastMonth=ym<currentYm;
+    let statusHtml='';
+    if(printedDate){
+      const d=new Date(printedDate);
+      const dStr=d.toLocaleDateString("nb",{day:"numeric",month:"long",year:"numeric"})+" kl. "+d.toLocaleTimeString("nb",{hour:"2-digit",minute:"2-digit"});
+      statusHtml='<div style="margin-top:1rem;padding:10px 14px;background:#eafaf1;border:1px solid #a9dfbf;border-radius:6px;display:flex;align-items:center;gap:10px">'
+        +'<span style="font-size:1.2rem">✅</span>'
+        +'<div><div style="font-weight:600;color:#1e8449">Faktura bekreftet skrevet ut</div>'
+        +'<div style="font-size:12px;color:#555">'+dStr+'</div></div>'
+        +'<div style="flex:1"></div>'
+        +'<button class="btn btn-sm" style="font-size:12px;background:none;border:1px solid #aaa;color:#555" onclick="try{localStorage.removeItem(\'invoicePrinted_'+ym+'\')}catch(e){}render()">Angre</button>'
+        +'</div>';
+    } else if(isPastMonth){
+      statusHtml='<div style="margin-top:1rem;padding:10px 14px;background:#fef9e7;border:1px solid #f9ca24;border-radius:6px;display:flex;align-items:center;gap:10px">'
+        +'<span style="font-size:1.2rem">⚠️</span>'
+        +'<div style="font-weight:600;color:#b7950b">Faktura ikke bekreftet skrevet ut</div>'
+        +'<div style="flex:1"></div>'
+        +'<button class="btn btn-sm btn-primary" onclick="markInvoicePrinted(\''+ym+'\')">Marker som skrevet ut</button>'
+        +'</div>';
+    }
+    html+=statusHtml;
     html+='<div style="margin-top:1rem"><button class="btn btn-primary" onclick="printInvoice(\''+ym+'\')">&#x1F5A8; Skriv ut / Eksporter faktura</button></div>';
   }
   html+='</div>';
@@ -1261,6 +1285,25 @@ function printCanteenOrder(id){
   setTimeout(function(){w.print();},400);
 }
 
+function markInvoicePrinted(ym){
+  try{localStorage.setItem('invoicePrinted_'+ym,new Date().toISOString());}catch(e){}
+  render();
+}
+function getInvoicePrintedDate(ym){
+  try{return localStorage.getItem('invoicePrinted_'+ym)||null;}catch(e){return null;}
+}
+function getUnprintedInvoiceMonths(){
+  const now=new Date();
+  const currentYm=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0");
+  const months={};
+  S.orders.filter(function(o){return o.status==="delivered"||o.status==="accepted";}).forEach(function(o){
+    const[wy,wn]=o.week.split("-W").map(Number);
+    const d=new Date(wy,0,1+(wn-1)*7);
+    const ym=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    if(ym<currentYm)months[ym]=true;
+  });
+  return Object.keys(months).filter(function(ym){return!getInvoicePrintedDate(ym);});
+}
 function printInvoice(ym){
   const[y,m]=ym.split("-").map(Number);
   const mo=S.orders.filter(function(o){const[wy,wn]=o.week.split("-W").map(Number);const d=new Date(wy,0,1+(wn-1)*7);return d.getFullYear()===y&&d.getMonth()===m-1&&(o.status==="delivered"||o.status==="accepted");});
@@ -1279,6 +1322,7 @@ function printInvoice(ym){
     +'<div style="margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:32px"><div style="border-top:1.5px solid #111;padding-top:8px;font-size:12px;color:#555">Kantinen godkjent av og dato</div><div style="border-top:1.5px solid #111;padding-top:8px;font-size:12px;color:#555">Kafeen godkjent av og dato</div></div>'
     +'</body></html>');
   w.document.close();
+  markInvoicePrinted(ym);
 }
 
 isAuth()?loadAll():renderLogin(false);
