@@ -1956,7 +1956,7 @@ async function buildKantineSync() {
           ${synced
             ? `<span style="color:#3B6D11;font-size:0.85rem;font-weight:600;margin-right:8px">✓ Importert</span>
                <button class="btn btn-sm btn-danger" onclick="undoKantineImport(${synced})">↩ Angre</button>`
-            : (order.status === 'delivered' || order.status === 'accepted')
+            : (order.status === 'delivered' || (order.status === 'accepted' && order.week < (() => { const n=new Date(); const d=new Date(Date.UTC(n.getFullYear(),n.getMonth(),n.getDate())); const day=d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()+4-day); const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1)); return d.getUTCFullYear()+'-W'+String(Math.ceil((((d-ys)/86400000)+1)/7)).padStart(2,'0'); })()))
               ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
                    <label style="font-size:0.82rem;color:var(--text2);white-space:nowrap">Leveringsdato:</label>
                    ${mkDatePicker('sync-date-'+order.id, defaultDate, '', 'padding:5px 8px;font-size:0.88rem;background:white')}
