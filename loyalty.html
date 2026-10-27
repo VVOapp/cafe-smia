@@ -70,6 +70,13 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 .reward-banner { background: linear-gradient(135deg,#3B6D11,#5a9e1f); color: white; border-radius: var(--radius-sm); padding: 7px 10px; font-weight: 700; font-size: 13px; margin: 5px 0; text-align: center; }
 .customer-chip { font-size: 11px; color: var(--text3); font-family: monospace; word-break: break-all; }
 
+.campaign-card { border: 2px solid var(--accent-border); background: var(--accent-light); }
+.campaign-title { font-size: 15px; font-weight: 700; color: var(--accent); }
+.drink-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.drink-btn { padding: 12px 8px; font-size: 14px; font-weight: 600; border-radius: var(--radius-sm); border: 1.5px solid var(--border2); background: var(--bg); color: var(--text); cursor: pointer; }
+.drink-btn.selected { background: var(--accent); color: white; border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 @media (max-width: 480px) {
   header h1 { font-size: 16px; }
   .card { padding: 1rem; }
@@ -95,7 +102,8 @@ input, select { background: var(--bg); border: 1px solid var(--border2); border-
 const SUPABASE_URL  = 'https://kvtugiflpxehytpplkqw.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2dHVnaWZscHhlaHl0cHBsa3F3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MjUxMDEsImV4cCI6MjA5MTMwMTEwMX0.7eoiM80p8CSJdwTCcFFUHAjx5LD5R_yQ0p3Ckfm6zPs';
 
-const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false, eligibleProducts: [], thermosCup: null, thermosRedemptionCount: 0 };
+const ST = { rules: [], customerId: null, stamps: [], stream: null, scanning: false, eligibleProducts: [], thermosCup: null, thermosRedemptionCount: 0,
+             campaigns: [], productNames: {}, isTeacher: false, cmToday: {}, cmLast: {} };
 
 async function sbFetch(path, options = {}) {
   const url = SUPABASE_URL + '/rest/v1/' + path;
@@ -115,6 +123,7 @@ async function sbFetch(path, options = {}) {
 const sbGet    = (path) => sbFetch(path);
 const sbPost   = (table, body) => sbFetch(table, { method: 'POST', body });
 const sbPatch  = (path, body) => sbFetch(path, { method: 'PATCH', body });
+const sbDelete = (path) => sbFetch(path, { method: 'DELETE', prefer: 'return=minimal' });
 
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function el(id) { return document.getElementById(id); }
@@ -148,6 +157,114 @@ async function startApp() {
     ST.eligibleProducts = eligible.map(e => nameById[e.cafe_product_id] || 'Ukjent produkt');
   } catch(e) {
     ST.eligibleProducts = [];
+  }
+  ST.productNames = nameById;
+  // Campaigns are optional too — campaign-setup.sql may not have been run yet.
+  try {
+    const d = localDate();
+    ST.campaigns = await sbGet(`campaigns?active=eq.true&start_date=lte.${d}&end_date=gte.${d}&select=*`);
+  } catch(e) {
+    ST.campaigns = [];
+  }
+  renderMain();
+}
+
+// =============================================================
+//  CAMPAIGNS (gratis drikke, f.eks. Novemberkos for lærere)
+// =============================================================
+const localDate = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
+const nowHHMM   = () => new Date().toTimeString().slice(0, 5);
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); };
+
+async function loadCampaignToday() {
+  ST.cmToday = {};
+  ST.cmLast = {};
+  const todays = ST.campaigns.filter(c => (c.weekdays || []).includes(new Date().getDay()));
+  if (!todays.length || !ST.customerId) return;
+  try {
+    const rows = await sbGet(`campaign_redemptions?customer_id=eq.${encodeURIComponent(ST.customerId)}&created_at=gte.${encodeURIComponent(startOfToday())}&select=campaign_id,cafe_product_id`);
+    for (const r of rows) (ST.cmToday[r.campaign_id] ||= []).push(r.cafe_product_id);
+  } catch(e) {
+    showAlert('Kunne ikke sjekke kampanje: ' + e.message, 'error');
+  }
+}
+
+async function setTeacher(flag) {
+  if (!flag && !confirm('Fjerne lærermerkingen for denne kunden?')) return;
+  try {
+    await sbPatch(`loyalty_customers?id=eq.${encodeURIComponent(ST.customerId)}`, { is_teacher: flag });
+    ST.isTeacher = flag;
+    showAlert(flag ? 'Merket som lærer 👩‍🏫' : 'Lærermerking fjernet');
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+  renderMain();
+}
+
+// The staff's only job is the drink: one tap registers it (with undo).
+// Conversation starter, conversation confirmation and feedback happen on the teacher's own phone.
+function renderCampaignCard(c) {
+  if (!(c.weekdays || []).includes(new Date().getDay())) return '';
+  if (c.teachers_only && !ST.isTeacher) {
+    return `
+    <div class="card">
+      <div class="product-name">🎁 ${esc(c.name)} <span style="font-weight:400;color:var(--text3)">(kun lærere)</span></div>
+      <button class="btn btn-secondary" style="margin-top:8px" onclick="setTeacher(true)">👩‍🏫 Merk som lærer</button>
+    </div>`;
+  }
+  const used = ST.cmToday[c.id] || [];
+  if (used.length >= (c.max_per_day || 1)) {
+    const names = used.map(pid => ST.productNames[pid] || 'drikke').join(', ');
+    return `
+    <div class="card" style="border-color:#C0DD97">
+      <div class="product-name">🎁 ${esc(c.name)}</div>
+      <div class="progress-label" style="color:#3B6D11;margin-top:4px">✅ Brukt i dag: ${esc(names)}</div>
+      ${ST.cmLast[c.id] ? `<button class="btn btn-sm btn-danger" style="margin-top:6px" onclick="undoCampaign(${c.id})">↶ Angre</button>` : ''}
+    </div>`;
+  }
+  if (nowHHMM() > c.cutoff_time) {
+    return `
+    <div class="card">
+      <div class="product-name">🎁 ${esc(c.name)}</div>
+      <div class="progress-label" style="margin-top:4px">⏰ Tilbudet gjelder kun før kl. ${esc(c.cutoff_time)}.</div>
+    </div>`;
+  }
+  return `
+  <div class="card campaign-card">
+    <div class="campaign-title">🎁 ${esc(c.name)} — trykk på drikken</div>
+    <div class="drink-grid">
+      ${(c.product_ids || []).map(pid => `
+        <button class="drink-btn" onclick="redeemCampaign(${c.id}, ${pid}, this)">${esc(ST.productNames[pid] || 'Ukjent')}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
+async function redeemCampaign(cid, pid, btn) {
+  const c = ST.campaigns.find(x => x.id === cid);
+  if (!c) return;
+  if (nowHHMM() > c.cutoff_time) { showAlert(`Tilbudet gjelder kun før kl. ${c.cutoff_time}.`, 'error'); renderMain(); return; }
+  document.querySelectorAll('.drink-btn').forEach(b => b.disabled = true);
+  if (btn) btn.classList.add('selected');
+  try {
+    const rows = await sbPost('campaign_redemptions', [{ campaign_id: cid, customer_id: ST.customerId, cafe_product_id: pid }]);
+    await loadCampaignToday();
+    ST.cmLast[cid] = rows[0]?.id;
+    showAlert(`${ST.productNames[pid] || 'Drikke'} registrert ☕`);
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
+  }
+  renderMain();
+}
+
+async function undoCampaign(cid) {
+  const id = ST.cmLast[cid];
+  if (!id) return;
+  try {
+    await sbDelete(`campaign_redemptions?id=eq.${id}`);
+    await loadCampaignToday();
+    showAlert('Registrering angret');
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
   }
   renderMain();
 }
@@ -184,7 +301,10 @@ function renderMain() {
   m.innerHTML = `
     <div class="card">
       <div class="customer-chip">Kunde: ${esc(ST.customerId)}</div>
+      ${ST.isTeacher ? `<div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:2px">👩‍🏫 Lærer
+        <a href="#" onclick="setTeacher(false);return false;" style="font-weight:400;color:var(--text3);margin-left:6px">fjern</a></div>` : ''}
     </div>
+    ${ST.campaigns.map(c => renderCampaignCard(c)).join('')}
     ${ST.rules.map(r => renderRuleCard(r)).join('')}
     <button class="btn btn-next" onclick="resetScan()">↺ Skann neste kunde</button>
   `;
@@ -293,14 +413,21 @@ async function onCodeScanned(token) {
   } catch(e) { /* thermos tables not set up — ignore and try as a loyalty code */ }
 
   try {
-    let rows = await sbGet(`loyalty_customers?id=eq.${encodeURIComponent(token)}&select=id`);
+    let rows;
+    try {
+      rows = await sbGet(`loyalty_customers?id=eq.${encodeURIComponent(token)}&select=id,is_teacher`);
+    } catch(e) {
+      // is_teacher column missing (campaign-setup.sql not run yet)
+      rows = await sbGet(`loyalty_customers?id=eq.${encodeURIComponent(token)}&select=id`);
+    }
     if (rows.length === 0) {
       rows = await sbPost('loyalty_customers', [{ id: token }]);
       showAlert('Ny lojalitetskunde registrert 🎉');
     }
+    ST.isTeacher = !!rows[0]?.is_teacher;
     ST.customerId = token;
     ST.thermosCup = null;
-    await loadStamps();
+    await Promise.all([loadStamps(), loadCampaignToday()]);
     if (navigator.vibrate) navigator.vibrate(80);
   } catch(e) {
     showAlert('Feil ved oppslag: ' + e.message, 'error');
@@ -404,6 +531,7 @@ function resetScan() {
   ST.stamps = [];
   ST.thermosCup = null;
   ST.thermosRedemptionCount = 0;
+  ST.isTeacher = false; ST.cmToday = {}; ST.cmLast = {};
   renderMain();
 }
 
