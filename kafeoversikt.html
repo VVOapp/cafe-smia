@@ -7454,11 +7454,13 @@ async function buildLojalitet() {
   const nav = `
   <div class="sub-nav">
     <button class="${subTab==='program'?'active':''}" onclick="ST.subTab.lojalitet='program';renderTab()">🎁 Lojalitetsprogram</button>
+    <button class="${subTab==='kampanjer'?'active':''}" onclick="ST.subTab.lojalitet='kampanjer';renderTab()">✨ Kampanjer</button>
     <button class="${subTab==='stats'?'active':''}"   onclick="ST.subTab.lojalitet='stats';renderTab()">📊 Statistikk</button>
     <button class="${subTab==='quiz'?'active':''}"    onclick="ST.subTab.lojalitet='quiz';renderTab()">🧩 Ukens quiz</button>
   </div>`;
-  const content = subTab === 'quiz'  ? buildUkensQuizTab()
-                : subTab === 'stats' ? await buildLojalitetStats()
+  const content = subTab === 'quiz'      ? buildUkensQuizTab()
+                : subTab === 'stats'     ? await buildLojalitetStats()
+                : subTab === 'kampanjer' ? await buildKampanjer()
                 : await buildLojalitetProgram();
   return nav + content;
 }
@@ -7807,6 +7809,359 @@ async function deleteLoyaltyRule(id) {
   try {
     await sbDelete(`loyalty_rules?id=eq.${id}`);
     showAlert('Regel slettet');
+    await renderTab();
+  } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
+}
+
+// =============================================================
+//  LOJALITET — KAMPANJER (f.eks. gratis kaffe for lærere i november)
+//  Tabeller: campaigns + campaign_redemptions (se campaign-setup.sql)
+// =============================================================
+const CAMPAIGN_WEEKDAYS = [[1,'man'],[2,'tir'],[3,'ons'],[4,'tor'],[5,'fre'],[6,'lør'],[0,'søn']];
+// Spørsmål læreren stiller den ansatte (vises på lærerens kodeside)
+const CAMPAIGN_DEFAULT_STARTERS = [
+  'Hvordan har du det i dag?',
+  'Hva gjorde du i helgen?',
+  'Hva skal du gjøre i helgen?',
+  'Hva gjorde du i går kveld?',
+  'Hvor kommer du fra?',
+  'Hvor lenge har du bodd i Norge?',
+  'Hvilke språk snakker du?',
+  'Hva liker du best med å jobbe i kafeen?',
+  'Hvilken drikke liker du best?',
+  'Hva anbefaler du i dag?',
+  'Hvordan lager du denne drikken?',
+  'Hva spiste du til frokost?',
+  'Hvordan kom du hit i dag?',
+  'Hva liker du å gjøre på fritiden?',
+  'Hva er favorittmaten din?',
+  'Hvordan er været i hjemlandet ditt nå?',
+  'Liker du den norske vinteren?',
+  'Hva gjør du når det er mørkt og kaldt ute?',
+  'Hva er vanskeligst med norsk?',
+  'Hvilket norsk ord liker du best?',
+  'Hva vil du jobbe med i fremtiden?',
+  'Liker du å gå tur i skogen?',
+  'Har du smakt brunost?',
+  'Hva er en typisk drikk i hjemlandet ditt?',
+  'Hvordan feirer dere høytider i hjemlandet ditt?',
+  'Hva er det beste med Vennesla?'
+];
+const localDay = ts => new Date(ts).toLocaleDateString('sv-SE'); // YYYY-MM-DD i lokal tid
+
+function campaignStatus(c) {
+  const d = new Date().toLocaleDateString('sv-SE');
+  if (!c.active)          return { label: 'Pause',     color: '#6b7280', bg: '#f3f4f6' };
+  if (d < c.start_date)   return { label: 'Planlagt',  color: '#185FA5', bg: '#E6F1FB' };
+  if (d > c.end_date)     return { label: 'Avsluttet', color: '#6b7280', bg: '#f3f4f6' };
+  return                         { label: 'Pågår',     color: '#3B6D11', bg: '#EAF3DE' };
+}
+
+function campaignProductCost(pid) {
+  const recipe = ST._recipeCostCache?.[pid];
+  if (recipe > 0) return recipe;
+  const p = ST.cafeProducts.find(x => x.id === pid);
+  return p?.canteen_cost > 0 ? p.canteen_cost : null;
+}
+
+const fmtRating = (sum, n) => n ? `${(sum / n).toLocaleString('nb-NO', {maximumFractionDigits:1})} / 5 <span style="color:var(--text3);font-size:11px">(${n})</span>` : '<span style="color:var(--text3)">—</span>';
+
+async function buildKampanjer() {
+  let campaigns = [];
+  try {
+    campaigns = await sbGet('campaigns?select=*&order=start_date.desc');
+  } catch(e) {
+    return `<div class="alert alert-error">Kunne ikke laste kampanjer: ${esc(e.message)}<br><br>
+      Har du kjørt campaign-setup.sql i Supabase ennå?</div>`;
+  }
+  const nameById = Object.fromEntries(ST.cafeProducts.map(p => [p.id, p.name]));
+
+  if (!ST._cmSelected || !campaigns.some(c => c.id === ST._cmSelected)) {
+    ST._cmSelected = (campaigns.find(c => campaignStatus(c).label === 'Pågår') || campaigns[0])?.id || null;
+  }
+  const sel = campaigns.find(c => c.id === ST._cmSelected);
+
+  const list = `
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Kampanjer (${campaigns.length})</span>
+      <div class="spacer"></div>
+      <button class="btn btn-primary btn-sm" onclick="openCmModal()">+ Ny kampanje</button>
+    </div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:12px">
+      Kampanjer gir lojalitetskunder gratis drikke på utvalgte dager før et klokkeslett. I
+      <a href="https://vvoapp.github.io/cafe-smia/loyalty.html" target="_blank" rel="noopener">lojalitetsskanneren 🎁</a>
+      merker ansatte en kunde som lærer (én gang) og trykker på drikken. Læreren ser samtalestarter,
+      bekrefter samtalen og gir tilbakemelding på sin egen kodeside — lærerkampanjer vises ikke for andre kunder.
+      Nye drikker legges først inn under Oppskrifter → Salgsprodukter.
+    </p>
+    ${campaigns.length === 0 ? '<div class="empty">Ingen kampanjer ennå. Lag f.eks. "Novemberkos for lærere".</div>' : `
+    <table>
+      <thead><tr><th>Navn</th><th>Periode</th><th>Dager / tid</th><th style="text-align:center">Drikker</th><th style="text-align:center">Status</th><th></th></tr></thead>
+      <tbody>
+        ${campaigns.map(c => {
+          const st = campaignStatus(c);
+          const dayIdx = CAMPAIGN_WEEKDAYS.map(([n], i) => (c.weekdays||[]).includes(n) ? i : -1).filter(i => i >= 0);
+          const days = dayIdx.length > 2 && dayIdx.every((v, i) => !i || v === dayIdx[i-1] + 1)
+            ? `${CAMPAIGN_WEEKDAYS[dayIdx[0]][1]}–${CAMPAIGN_WEEKDAYS[dayIdx.at(-1)][1]}`
+            : dayIdx.map(i => CAMPAIGN_WEEKDAYS[i][1]).join(', ');
+          return `
+        <tr style="cursor:pointer;${c.id === ST._cmSelected ? 'background:var(--bg2)' : ''}" onclick="ST._cmSelected=${c.id};renderTab()">
+          <td style="font-weight:600">${esc(c.name)}${c.teachers_only ? ' <span style="font-weight:400;color:var(--text3)">· lærere</span>' : ''}</td>
+          <td style="white-space:nowrap">${fmtDate(c.start_date)} – ${fmtDate(c.end_date)}</td>
+          <td>${esc(days)} · før ${esc(c.cutoff_time)}</td>
+          <td style="text-align:center">${(c.product_ids||[]).length}</td>
+          <td style="text-align:center"><span style="font-size:0.78rem;background:${st.bg};color:${st.color};border-radius:4px;padding:1px 7px;font-weight:600">${st.label}</span></td>
+          <td style="white-space:nowrap;text-align:right" onclick="event.stopPropagation()">
+            <button class="btn btn-sm btn-icon" onclick="openCmModal(${c.id})">✏️</button>
+            <button class="btn btn-sm btn-danger btn-icon" onclick="deleteCampaign(${c.id})">🗑️</button>
+          </td>
+        </tr>`; }).join('')}
+      </tbody>
+    </table>`}
+  </div>`;
+
+  const stats = sel ? await buildKampanjeStats(sel, nameById) : '';
+  return list + stats + buildCmModal();
+}
+
+async function buildKampanjeStats(c, nameById) {
+  let reds = [];
+  try {
+    reds = await sbGet(`campaign_redemptions?campaign_id=eq.${c.id}&select=*&order=created_at`);
+  } catch(e) {
+    return `<div class="alert alert-error">Kunne ikke laste innløsninger: ${esc(e.message)}</div>`;
+  }
+  await precomputeProductCosts();
+
+  const customers = new Set(reds.map(r => r.customer_id));
+  // Samtalen bekreftes av læreren i tilbakemeldingen; null = ikke svart
+  const talkAnswered = reds.filter(r => r.conversation_done != null).length;
+  const talked       = reds.filter(r => r.conversation_done === true).length;
+
+  let teacherCount = null;
+  try { teacherCount = (await sbGet('loyalty_customers?is_teacher=eq.true&select=id')).length; } catch(e) { /* ignore */ }
+
+  // Nye lojalitetsmedlemmer i perioden (created_at finnes kanskje ikke i eldre oppsett)
+  let newMembers = null, newMembersUsed = 0;
+  try {
+    const endPlus = new Date(c.end_date + 'T00:00:00'); endPlus.setDate(endPlus.getDate() + 1);
+    const rows = await sbGet(`loyalty_customers?select=id&created_at=gte.${new Date(c.start_date + 'T00:00:00').toISOString()}&created_at=lt.${endPlus.toISOString()}`);
+    newMembers = rows.length;
+    newMembersUsed = rows.filter(r => customers.has(r.id)).length;
+  } catch(e) { /* ignore */ }
+
+  // Fortsatt aktive etter kampanjen: kampanjekunder som har fått stempler etter sluttdato
+  let stillActive = null;
+  const ended = new Date().toLocaleDateString('sv-SE') > c.end_date;
+  if (ended && customers.size) {
+    try {
+      const endPlus = new Date(c.end_date + 'T00:00:00'); endPlus.setDate(endPlus.getDate() + 1);
+      const rows = await sbGet(`loyalty_stamps?select=customer_id&created_at=gte.${endPlus.toISOString()}`);
+      stillActive = new Set(rows.map(r => r.customer_id).filter(id => customers.has(id))).size;
+    } catch(e) { /* ignore */ }
+  }
+
+  // Per drikk
+  const byDrink = {};
+  let totalCost = 0, missingCost = 0, svcSum = 0, svcN = 0;
+  for (const r of reds) {
+    const d = byDrink[r.cafe_product_id] ||= { n: 0, sum: 0, rated: 0 };
+    d.n++;
+    if (r.drink_rating)   { d.sum += r.drink_rating; d.rated++; }
+    if (r.service_rating) { svcSum += r.service_rating; svcN++; }
+    const cost = campaignProductCost(r.cafe_product_id);
+    if (cost == null) missingCost++; else totalCost += cost;
+  }
+  const drinkIds = [...new Set([...(c.product_ids||[]), ...Object.keys(byDrink).map(Number)])];
+  const drinkRows = drinkIds
+    .map(pid => ({ pid, ...(byDrink[pid] || { n: 0, sum: 0, rated: 0 }) }))
+    .sort((a, b) => b.n - a.n)
+    .map(d => {
+      const unit = campaignProductCost(d.pid);
+      return `
+      <tr>
+        <td style="font-weight:500">${esc(nameById[d.pid] || 'Ukjent produkt')}</td>
+        <td style="text-align:center;font-weight:600">${d.n}</td>
+        <td style="text-align:center">${fmtRating(d.sum, d.rated)}</td>
+        <td style="text-align:right">${unit != null ? fmt(unit) : '<span style="color:#856404" title="Mangler oppskrift/innkjøpspris">⚠️ mangler</span>'}</td>
+        <td style="text-align:right">${unit != null ? fmt(unit * d.n) : '—'}</td>
+      </tr>`;
+    }).join('');
+
+  // Per dag
+  const byDay = {};
+  for (const r of reds) { const k = localDay(r.created_at); byDay[k] = (byDay[k] || 0) + 1; }
+  const maxDay = Math.max(1, ...Object.values(byDay));
+  const dayRows = Object.entries(byDay).sort().map(([d, n]) => {
+    const wd = new Date(d + 'T12:00:00').toLocaleDateString('nb-NO', { weekday: 'short' });
+    return `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:4px">
+        <span style="width:84px;color:var(--text2);white-space:nowrap">${wd} ${fmtDate(d).slice(0,5)}</span>
+        <div style="flex:1;background:var(--bg2);border-radius:4px;height:16px">
+          <div style="width:${Math.round(n / maxDay * 100)}%;background:#6F4E37;height:100%;border-radius:4px"></div>
+        </div>
+        <span style="width:24px;text-align:right;font-weight:600">${n}</span>
+      </div>`;
+  }).join('');
+
+  const comments = reds.filter(r => r.comment).slice().reverse().map(r => `
+    <div style="border-bottom:1px solid var(--border);padding:8px 0;font-size:13px">
+      <div style="color:var(--text3);font-size:11.5px">${fmtDate(localDay(r.created_at))} · ${esc(nameById[r.cafe_product_id] || '')}
+        ${r.drink_rating ? ` · drikke ${r.drink_rating}/5` : ''}${r.service_rating ? ` · samtale ${r.service_rating}/5` : ''}</div>
+      <div>${esc(r.comment)}</div>
+    </div>`).join('');
+
+  // "Hopp over" sets feedback_at without answers, so count rows with actual content
+  const feedbackN = reds.filter(r => r.conversation_done != null || r.drink_rating || r.service_rating || r.comment).length;
+
+  return `
+  <div class="section-label" style="margin-top:1.5rem">📊 ${esc(c.name)}</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:1rem">
+    <div class="stat"><div class="stat-val">${reds.length}</div><div class="stat-label">Gratis drikker</div></div>
+    <div class="stat"><div class="stat-val">${customers.size}${teacherCount != null && c.teachers_only ? ` / ${teacherCount}` : ''}</div><div class="stat-label">${c.teachers_only ? 'Lærere som har brukt tilbudet / merket som lærer' : 'Ulike kunder'}</div></div>
+    <div class="stat"><div class="stat-val">${talkAnswered ? Math.round(talked / talkAnswered * 100) + '%' : '—'}</div><div class="stat-label">Hadde samtale${talkAnswered ? ` (${talked} av ${talkAnswered} svar)` : ''}</div></div>
+    <div class="stat"><div class="stat-val">${svcN ? (svcSum / svcN).toLocaleString('nb-NO', {maximumFractionDigits:1}) : '—'}</div><div class="stat-label">Service / samtale (av 5)</div></div>
+    <div class="stat"><div class="stat-val">${feedbackN}</div><div class="stat-label">Tilbakemeldinger</div></div>
+    ${newMembers != null ? `<div class="stat"><div class="stat-val">${newMembers}</div><div class="stat-label">Nye medlemmer i perioden${newMembers ? ` (${newMembersUsed} brukte tilbudet)` : ''}</div></div>` : ''}
+    ${stillActive != null ? `<div class="stat"><div class="stat-val">${stillActive} / ${customers.size}</div><div class="stat-label">Stempler etter kampanjen</div></div>` : ''}
+    <div class="stat"><div class="stat-val">${fmt(totalCost)}</div><div class="stat-label">Kampanjekostnad${missingCost ? ` (${missingCost} uten pris)` : ''}</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">☕ Per drikk</span></div>
+    ${drinkRows ? `
+    <table>
+      <thead><tr><th>Drikk</th><th style="text-align:center">Valgt</th><th style="text-align:center">Smak</th><th style="text-align:right">Kost/stk</th><th style="text-align:right">Kostnad</th></tr></thead>
+      <tbody>${drinkRows}</tbody>
+    </table>` : '<div class="empty">Ingen drikker valgt for kampanjen</div>'}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">📅 Per dag</span></div>
+    ${dayRows || '<div class="empty">Ingen innløsninger ennå</div>'}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">💬 Kommentarer (${reds.filter(r => r.comment).length})</span></div>
+    ${comments || '<div class="empty">Ingen kommentarer ennå</div>'}
+  </div>`;
+}
+
+function buildCmModal() {
+  if (!ST._cmModal) return '';
+  const c = ST._cmModal.data || {};
+  const isNew = !c.id;
+  const y = new Date().getFullYear();
+  const weekdays = c.weekdays || [1,2,3,4];
+  const chosen   = new Set(c.product_ids || []);
+  const starters = (c.conversation_starters && c.conversation_starters.length ? c.conversation_starters : CAMPAIGN_DEFAULT_STARTERS).join('\n');
+  const prods = [...ST.cafeProducts].sort((a, b) => (chosen.has(b.id) - chosen.has(a.id)) || a.name.localeCompare(b.name, 'nb'));
+  return `<div class="modal-bg" onclick="if(event.target===this)closeCmModal()">
+  <div class="modal">
+    <h3>${isNew ? 'Ny kampanje' : 'Rediger kampanje'}</h3>
+    <div id="cm-modal-error" class="alert alert-error" style="display:none"></div>
+    <div class="form-row">
+      <label>Navn</label>
+      <input id="cm-name" value="${esc(c.name || 'Novemberkos for lærere')}">
+    </div>
+    <div class="form-row">
+      <label>Tekst til kunden <span style="font-weight:400;color:var(--text2)">— vises på kundens kodeside</span></label>
+      <input id="cm-desc" value="${esc(c.description ?? 'Takk for innsatsen! Kos deg med en gratis drikk og en hyggelig prat med oss – da får våre ansatte øve på norsk.')}">
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="form-row" style="flex:1"><label>Fra</label><input type="date" id="cm-start" value="${esc(c.start_date || `${y}-11-01`)}"></div>
+      <div class="form-row" style="flex:1"><label>Til</label><input type="date" id="cm-end" value="${esc(c.end_date || `${y}-11-30`)}"></div>
+    </div>
+    <div class="form-row">
+      <label>Dager</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${CAMPAIGN_WEEKDAYS.map(([n, l]) => `<label style="display:flex;align-items:center;gap:4px;font-weight:400;margin:0"><input type="checkbox" class="cm-wd" value="${n}" ${weekdays.includes(n) ? 'checked' : ''} style="width:16px;height:16px">${l}</label>`).join('')}
+      </div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="form-row" style="flex:1"><label>Gjelder til kl.</label><input type="time" id="cm-cutoff" value="${esc(c.cutoff_time || '10:30')}"></div>
+      <div class="form-row" style="flex:1"><label>Maks per kunde per dag</label><input type="number" id="cm-max" min="1" max="10" step="1" value="${c.max_per_day || 1}"></div>
+    </div>
+    <div class="form-row">
+      <label>Drikker kunden kan velge (${chosen.size} valgt)</label>
+      <input id="cm-prod-filter" placeholder="Søk…" oninput="filterCmProducts(this.value)" style="margin-bottom:6px">
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border2);border-radius:var(--radius-sm);padding:6px 10px">
+        ${prods.length === 0 ? '<div class="empty">Ingen salgsprodukter</div>' : prods.map(p => `
+          <label class="cm-prod-row" data-name="${esc(p.name.toLowerCase())}" style="display:flex;align-items:center;gap:8px;font-weight:400;margin:3px 0">
+            <input type="checkbox" class="cm-prod" value="${p.id}" ${chosen.has(p.id) ? 'checked' : ''} style="width:16px;height:16px">${esc(p.name)}
+          </label>`).join('')}
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Samtalestartere <span style="font-weight:400;color:var(--text2)">— spørsmål læreren stiller den ansatte, én per linje, vises tilfeldig på lærerens kodeside</span></label>
+      <textarea id="cm-starters" rows="6" style="width:100%;font-family:inherit">${esc(starters)}</textarea>
+    </div>
+    <div class="form-row" style="align-items:center;gap:10px">
+      <label style="margin:0">👩‍🏫 Kun for lærere</label>
+      <input type="checkbox" id="cm-teachers" ${c.teachers_only !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+      <span style="font-size:0.82rem;color:var(--text2)">(ansatte merker lærere i skanneren; andre kunder ser ikke tilbudet)</span>
+    </div>
+    <div class="form-row" style="align-items:center;gap:10px">
+      <label style="margin:0">Aktiv</label>
+      <input type="checkbox" id="cm-active" ${c.active !== false ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="saveCampaign(${c.id||0})">${isNew ? 'Lag kampanje' : 'Lagre'}</button>
+      <button class="btn" onclick="closeCmModal()">Avbryt</button>
+    </div>
+  </div></div>`;
+}
+
+function filterCmProducts(q) {
+  q = q.trim().toLowerCase();
+  document.querySelectorAll('.cm-prod-row').forEach(r => { r.style.display = !q || r.dataset.name.includes(q) ? '' : 'none'; });
+}
+
+async function openCmModal(id) {
+  ST._cmModal = { data: id ? (await sbGet(`campaigns?id=eq.${id}&select=*`))[0] || {} : {} };
+  renderTab();
+}
+function closeCmModal() { ST._cmModal = null; renderTab(); }
+
+async function saveCampaign(id) {
+  const errEl = el('cm-modal-error');
+  const fail = msg => { errEl.textContent = msg; errEl.style.display = ''; };
+  const data = {
+    name:        el('cm-name').value.trim(),
+    description: el('cm-desc').value.trim(),
+    start_date:  el('cm-start').value,
+    end_date:    el('cm-end').value,
+    weekdays:    [...document.querySelectorAll('.cm-wd:checked')].map(i => parseInt(i.value, 10)),
+    cutoff_time: el('cm-cutoff').value || '10:30',
+    max_per_day: Math.max(1, parseInt(el('cm-max').value, 10) || 1),
+    teachers_only: el('cm-teachers').checked,
+    product_ids: [...document.querySelectorAll('.cm-prod:checked')].map(i => parseInt(i.value, 10)),
+    conversation_starters: el('cm-starters').value.split('\n').map(s => s.trim()).filter(Boolean),
+    active:      el('cm-active').checked
+  };
+  if (!data.name)                                return fail('Gi kampanjen et navn.');
+  if (!data.start_date || !data.end_date)        return fail('Velg fra- og til-dato.');
+  if (data.end_date < data.start_date)           return fail('Til-dato kan ikke være før fra-dato.');
+  if (!data.weekdays.length)                     return fail('Velg minst én dag.');
+  if (!data.product_ids.length)                  return fail('Velg minst én drikk.');
+  try {
+    if (id) await sbPatch(`campaigns?id=eq.${id}`, data);
+    else {
+      const rows = await sbPost('campaigns', [data]);
+      if (rows[0]) ST._cmSelected = rows[0].id;
+    }
+    ST._cmModal = null;
+    showAlert('Kampanje lagret!');
+    await renderTab();
+  } catch(e) { fail('Feil: ' + e.message); }
+}
+
+async function deleteCampaign(id) {
+  if (!confirm('Slette kampanjen? Alle registrerte innløsninger og tilbakemeldinger for kampanjen slettes også.')) return;
+  try {
+    await sbDelete(`campaigns?id=eq.${id}`);
+    showAlert('Kampanje slettet');
     await renderTab();
   } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
 }
