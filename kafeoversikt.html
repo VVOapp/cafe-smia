@@ -1906,23 +1906,48 @@ async function savePurchase(supplierType) {
   }
 }
 
+// Kantine order lines as received by the café (kantine.html "Registrer mottak").
+// received[key] = {qty, price, no_invoice, note}; extra_items = items received but not ordered.
+// Old orders without received data fall back to ordered minus struck (rejected_items).
+function kantineOrderLines(order, kpMap) {
+  const rej = order.rejected_items || {};
+  const rec = order.received || {};
+  const out = [];
+  (Array.isArray(order.items) ? order.items : []).forEach(i => {
+    const p = kpMap[i.pid]; if (!p) return;
+    const parts = i.splits?.length > 0
+      ? i.splits.map((sp, si) => ({ key: i.pid + '_' + si, ordered: Number(sp.qty || 0), day: sp.day || '' }))
+      : [{ key: String(i.pid), ordered: Number(i.qty || 0), day: '' }];
+    parts.forEach(pt => {
+      const r = rec[pt.key];
+      const rejected = !!rej[pt.key];
+      const received = r ? Number(r.qty) || 0 : (rejected ? 0 : pt.ordered);
+      const billed   = r && r.no_invoice ? Math.min(received, pt.ordered) : received;
+      const price    = r && r.price != null ? Number(r.price) : Number(p.price) || 0;
+      out.push({ pid: i.pid, name: p.name, unit: p.unit || 'stk', day: i.splits?.length > 1 ? pt.day : '', ordered: pt.ordered, received, billed, price, rejected, extra: false, note: r?.note || '' });
+    });
+  });
+  (order.extra_items || []).forEach(e => {
+    const p = kpMap[e.pid]; if (!p) return;
+    const q = Number(e.qty) || 0;
+    out.push({ pid: e.pid, name: p.name, unit: p.unit || 'stk', day: '', ordered: 0, received: q, billed: e.no_invoice ? 0 : q, price: e.price != null ? Number(e.price) : Number(p.price) || 0, rejected: false, extra: true, note: e.note || '' });
+  });
+  return out;
+}
+const kantineOrderTotal = lines => Math.round(lines.reduce((s, l) => s + l.billed * l.price, 0) * 100) / 100;
+
 async function buildKantineSync() {
+  // Only orders the café has finished registering ("Fullfør mottak" → delivered)
   let deliveredOrders = [];
   try {
-    deliveredOrders = await sbGet('orders?status=in.(delivered,accepted)&order=created_at.desc&limit=30');
+    deliveredOrders = await sbGet('orders?status=eq.delivered&order=created_at.desc&limit=30');
   } catch(e) {}
 
-  // Find which are already synced — store receiptId per orderId for undo
-  const syncedMap = {};     // orderId → receiptId
-  const syncedDateMap = {}; // orderId → receipt_date
+  // Find which are already synced — store receipt per orderId for undo / change detection
+  const syncedMap = {};     // orderId → receipt {id, receipt_date, total_amount}
   try {
-    const synced = await sbGet('purchase_receipts?source=eq.bestillinger_sync&select=id,bestillinger_order_id,receipt_date');
-    synced.forEach(r => {
-      if (r.bestillinger_order_id) {
-        syncedMap[r.bestillinger_order_id]     = r.id;
-        syncedDateMap[r.bestillinger_order_id] = r.receipt_date;
-      }
-    });
+    const synced = await sbGet('purchase_receipts?source=eq.bestillinger_sync&select=id,bestillinger_order_id,receipt_date,total_amount');
+    synced.forEach(r => { if (r.bestillinger_order_id) syncedMap[r.bestillinger_order_id] = r; });
   } catch(e) {}
 
   let kantineProducts = [];
@@ -1930,7 +1955,7 @@ async function buildKantineSync() {
   const kpMap = {};
   kantineProducts.forEach(p => kpMap[p.id] = p);
 
-  if (deliveredOrders.length === 0) return `<div class="card"><div class="empty">Ingen leverte bestillinger funnet.</div></div>`;
+  if (deliveredOrders.length === 0) return `<div class="card"><div class="empty">Ingen mottatte bestillinger funnet.</div></div>`;
 
   // Update badge count and refresh nav
   ST._kantineUnsynced = deliveredOrders.filter(o => !syncedMap[o.id]).length;
@@ -1939,35 +1964,42 @@ async function buildKantineSync() {
   return `
   <div class="card">
     <div class="card-header"><span class="card-title">🏢 Importer fra kantine</span></div>
+    <div style="font-size:0.82rem;color:var(--text2);margin-bottom:10px">Viser bestillinger som kaféen har registrert som mottatt i Bestillinger-appen. Importen bruker antallet som faktisk ble mottatt.</div>
     ${deliveredOrders.map(order => {
-      const items   = Array.isArray(order.items) ? order.items : [];
-      const rej     = order.rejected_items || {};
-      const effQty  = (i, idx) => i.splits?.length > 0
-        ? i.splits.reduce((s,sp,si) => rej[i.pid+'_'+si] ? s : s+Number(sp.qty||0), 0)
-        : (rej[String(i.pid)] ? 0 : Number(i.qty||0));
-      const total   = items.reduce((s,i) => { const p = kpMap[i.pid]; return s + (p ? p.price * effQty(i) : 0); }, 0);
-      const synced  = syncedMap[order.id];
-      // Default delivery date: today (not created_at, which is order placement date)
-      const defaultDate = today();
-      return `<div class="card" style="margin-bottom:0.75rem;${synced ? 'opacity:0.6' : ''}">
+      const lines   = kantineOrderLines(order, kpMap);
+      const total   = kantineOrderTotal(lines);
+      const rcpt    = syncedMap[order.id];
+      const synced  = rcpt ? rcpt.id : null;
+      // Only orders registered in the new mottak flow have price snapshots; older ones would
+      // show false changes whenever a kantine price has changed since import
+      const hasRecv = order.received && Object.keys(order.received).length > 0;
+      const changed = rcpt && hasRecv && Math.abs(Number(rcpt.total_amount || 0) - total) > 0.005;
+      const hasAvvik = lines.some(l => !l.rejected && l.received !== l.ordered);
+      // Default delivery date: when the café registered it as received
+      const defaultDate = order.received_at ? order.received_at.slice(0, 10) : today();
+      return `<div class="card" style="margin-bottom:0.75rem;${synced && !changed ? 'opacity:0.6' : ''}">
         <div class="card-header">
-          <span class="card-title">Uke ${esc(order.week)} — ${fmt(total)}</span>
+          <span class="card-title">Uke ${esc(order.week)} — ${fmt(total)}${hasAvvik ? ' <span style="font-size:0.72rem;background:#FCEBEB;color:#A32D2D;border-radius:4px;padding:1px 6px;vertical-align:middle">avvik</span>' : ''}</span>
           <div class="spacer"></div>
           ${synced
             ? `<span style="color:#3B6D11;font-size:0.85rem;font-weight:600;margin-right:8px">✓ Importert</span>
                <button class="btn btn-sm btn-danger" onclick="undoKantineImport(${synced})">↩ Angre</button>`
-            : (order.status === 'delivered' || (order.status === 'accepted' && order.week < (() => { const n=new Date(); const d=new Date(Date.UTC(n.getFullYear(),n.getMonth(),n.getDate())); const day=d.getUTCDay()||7; d.setUTCDate(d.getUTCDate()+4-day); const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1)); return d.getUTCFullYear()+'-W'+String(Math.ceil((((d-ys)/86400000)+1)/7)).padStart(2,'0'); })()))
-              ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                   <label style="font-size:0.82rem;color:var(--text2);white-space:nowrap">Leveringsdato:</label>
-                   ${mkDatePicker('sync-date-'+order.id, defaultDate, '', 'padding:5px 8px;font-size:0.88rem;background:white')}
-                   <button class="btn btn-sm btn-primary" onclick="importKantineOrder(${order.id})">Importer som innkjøp</button>
-                 </div>`
-              : `<span style="font-size:0.82rem;color:#e6a817;font-weight:600">⏳ Venter på levering</span>`
+            : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                 <label style="font-size:0.82rem;color:var(--text2);white-space:nowrap">Leveringsdato:</label>
+                 ${mkDatePicker('sync-date-'+order.id, defaultDate, '', 'padding:5px 8px;font-size:0.88rem;background:white')}
+                 <button class="btn btn-sm btn-primary" onclick="importKantineOrder(${order.id})">Importer som innkjøp</button>
+               </div>`
           }
         </div>
+        ${changed
+          ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#FCEBEB;border:1px solid #F09595;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:0.82rem;color:#A32D2D">
+               ⚠️ Mottaket er endret etter import (importert ${fmt(rcpt.total_amount)}, nå ${fmt(total)}).
+               <button class="btn btn-sm btn-primary" onclick="reimportKantineOrder(${synced}, ${order.id}, '${rcpt.receipt_date || ''}')">Importer på nytt</button>
+             </div>`
+          : ''}
         ${synced
           ? (() => {
-              const isoDate = syncedDateMap && syncedDateMap[order.id] ? syncedDateMap[order.id] : '';
+              const isoDate = rcpt.receipt_date || '';
               return `<div id="redate-row-${order.id}" data-iso="${isoDate}"
                 style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:0.8rem;color:var(--text2);margin-bottom:8px">
                 📅 Kvittert dato: <strong>${isoDate ? fmtDate(isoDate) : '—'}</strong>
@@ -1976,23 +2008,16 @@ async function buildKantineSync() {
               </div>`;
             })()
           : ''}
-        <table><thead><tr><th>Produkt</th><th>Antall</th><th>Pris</th></tr></thead><tbody>
-          ${items.map(i => {
-            const p = kpMap[i.pid]; if (!p) return '';
-            if (i.splits?.length > 0) {
-              return i.splits.map((sp,si) => {
-                const key = i.pid+'_'+si;
-                const isRej = !!rej[key];
-                const style = isRej ? 'text-decoration:line-through;color:var(--text2);opacity:0.55' : '';
-                const daySpan = i.splits.length > 1 ? ` <span style="font-size:0.75rem;color:var(--text2)">(${esc(sp.day||'')})</span>` : '';
-                const strikeOpen = isRej ? '<s>' : '';
-                const strikeClose = isRej ? '</s>' : '';
-                return `<tr style="${style}"><td>${esc(p.name)}${daySpan}</td><td>${sp.qty} ${esc(p.unit)}</td><td>${strikeOpen}${fmt(p.price*Number(sp.qty))}${strikeClose}</td></tr>`;
-              }).join('');
-            }
-            const isRej = !!rej[String(i.pid)];
-            const style = isRej ? 'text-decoration:line-through;color:var(--text2);opacity:0.55' : '';
-            return `<tr style="${style}"><td>${esc(p.name)}</td><td>${i.qty} ${esc(p.unit)}</td><td>${isRej?'<s>':''} ${fmt(p.price*i.qty)}${isRej?'</s>':''}</td></tr>`;
+        <table><thead><tr><th>Produkt</th><th>Bestilt</th><th>Mottatt</th><th>Pris</th></tr></thead><tbody>
+          ${lines.map(l => {
+            const style = l.rejected ? 'text-decoration:line-through;color:var(--text2);opacity:0.55' : '';
+            const daySpan = l.day ? ` <span style="font-size:0.75rem;color:var(--text2)">(${esc(l.day)})</span>` : '';
+            const extraTag = l.extra ? ' <span style="font-size:0.72rem;color:#854F0B">(ekstra)</span>' : '';
+            const diff = l.received - l.ordered;
+            const diffTag = !l.rejected && diff !== 0
+              ? ` <span style="font-size:0.75rem;font-weight:700;color:${diff < 0 ? '#A32D2D' : '#854F0B'}">${diff > 0 ? '+' : ''}${fmtN(diff)}</span>` : '';
+            const freeTag = l.received > l.billed ? ` <span style="font-size:0.72rem;color:var(--text2)">(${fmtN(l.received - l.billed)} ikke fakturert)</span>` : '';
+            return `<tr style="${style}"><td>${esc(l.name)}${daySpan}${extraTag}</td><td>${l.extra ? '—' : fmtN(l.ordered) + ' ' + esc(l.unit)}</td><td>${fmtN(l.received)} ${esc(l.unit)}${diffTag}${freeTag}</td><td>${fmt(l.billed * l.price)}</td></tr>`;
           }).join('')}
         </tbody></table>
       </div>`;
@@ -2000,17 +2025,27 @@ async function buildKantineSync() {
   </div>`;
 }
 
-async function undoKantineImport(receiptId) {
-  if (!confirm('Angre importen? Kvitteringen slettes og bestillingen kan importeres på nytt.')) return;
+async function undoKantineImport(receiptId, silent) {
+  if (!silent && !confirm('Angre importen? Kvitteringen slettes og bestillingen kan importeres på nytt.')) return;
   try {
+    // Remove production rows auto-created by this import (older imports have no link and are left as they are)
+    try { await sbDelete(`production_log?purchase_receipt_id=eq.${receiptId}`); } catch(e) {}
     await sbDelete(`purchase_receipts?id=eq.${receiptId}`);
-    showAlert('Import angret — bestillingen kan importeres på nytt');
-    await renderTab();
+    if (!silent) {
+      showAlert('Import angret — bestillingen kan importeres på nytt');
+      await renderTab();
+    }
   } catch(e) {
     showAlert('Feil: ' + e.message, 'error');
+    throw e;
   }
 }
 
+async function reimportKantineOrder(receiptId, orderId, receiptDate) {
+  if (!confirm('Importere på nytt? Den gamle kvitteringen erstattes med de nye mottatte antallene.')) return;
+  try { await undoKantineImport(receiptId, true); } catch(e) { return; }
+  await importKantineOrder(orderId, receiptDate || null);
+}
 function redateKantineReceipt(receiptId, orderId) {
   // Replace the date row with an inline date picker
   const rowEl = document.getElementById(`redate-row-${orderId}`);
@@ -2041,26 +2076,30 @@ async function saveRedateKantine(receiptId, orderId) {
   }
 }
 
-async function importKantineOrder(orderId) {
+async function importKantineOrder(orderId, dateOverride) {
   try {
     const [order] = await sbGet(`orders?id=eq.${orderId}&select=*`);
+    if (order.status !== 'delivered') { showAlert('Bestillingen er ikke registrert som mottatt ennå.', 'error'); return; }
     let kantineProducts = await sbGet('products?select=*');
     const kpMap = {};
     kantineProducts.forEach(p => kpMap[p.id] = p);
 
-    // Use the date chosen in the sync UI (defaults to today — NOT created_at which is order placement date)
+    // Use the date chosen in the sync UI (defaults to the date the café registered the receipt)
     const dateInput = document.getElementById(`sync-date-${orderId}`);
-    const receiptDate = (dateInput && dateInput.value) ? dateInput.value : today();
+    const receiptDate = dateOverride || ((dateInput && dateInput.value) ? dateInput.value
+      : (order.received_at ? order.received_at.slice(0, 10) : today()));
 
-    const items    = Array.isArray(order.items) ? order.items : [];
-    const rejItems = order.rejected_items || {};
-    // Compute effective quantity per item, excluding crossed-off splits or whole items
-    const getEffQty = i => {
-      if (i.splits?.length > 0)
-        return i.splits.reduce((s,sp,si) => rejItems[i.pid+'_'+si] ? s : s+Number(sp.qty||0), 0);
-      return rejItems[String(i.pid)] ? 0 : Number(i.qty||0);
-    };
-    const total = items.reduce((s,i) => { const p = kpMap[i.pid]; const q = getEffQty(i); return s + (p&&q>0 ? p.price*q : 0); }, 0);
+    // Group received quantities per product and price. Quantity received above what is
+    // invoiced (marked "ikke fakturer" in kantine) becomes its own line at price 0.
+    const lines = kantineOrderLines(order, kpMap).filter(l => !l.rejected && l.received > 0);
+    const groups = {};
+    lines.forEach(l => {
+      const k = l.pid + '|' + l.price;
+      if (!groups[k]) groups[k] = { pid: l.pid, price: l.price, billed: 0, free: 0 };
+      groups[k].billed += l.billed;
+      groups[k].free   += l.received - l.billed;
+    });
+    const total = kantineOrderTotal(lines);
 
     const [receipt] = await sbPost('purchase_receipts', [{
       receipt_date: receiptDate,
@@ -2075,67 +2114,61 @@ async function importKantineOrder(orderId) {
     ST.ingredients.forEach(i => ingMap[i.name.toLowerCase()] = i);
 
     const itemsToInsert = [];
-    for (const item of items) {
-      const p = kpMap[item.pid];
-      if (!p) continue;
-      const qty = getEffQty(item);
-      if (qty <= 0) continue; // fully crossed off — skip
-      let ing = ingMap[p.name.toLowerCase()];
-      if (!ing) {
-        const ingUnit = p.unit || 'stk';
-        const [newIng] = await sbPost('ingredients', [{ name: p.name, unit: ingUnit, purchase_unit: ingUnit, recipe_unit: ingUnit, category: 'kantine', cost_per_unit: p.price, purchase_price: p.price, canteen_product_id: p.id }]);
-        ing = newIng;
-        ST.ingredients.push(newIng);
-        ingMap[p.name.toLowerCase()] = newIng;
+    const receivedByIng = {}; // ingredient_id → total quantity received (for auto-produce)
+    try {
+      for (const g of Object.values(groups)) {
+        const p = kpMap[g.pid];
+        let ing = ingMap[p.name.toLowerCase()];
+        if (!ing) {
+          const ingUnit = p.unit || 'stk';
+          const [newIng] = await sbPost('ingredients', [{ name: p.name, unit: ingUnit, purchase_unit: ingUnit, recipe_unit: ingUnit, category: 'kantine', cost_per_unit: p.price, purchase_price: p.price, canteen_product_id: p.id }]);
+          ing = newIng;
+          ST.ingredients.push(newIng);
+          ingMap[p.name.toLowerCase()] = newIng;
+        }
+        if (g.billed > 0) itemsToInsert.push({ receipt_id: receipt.id, ingredient_id: ing.id, item_name: p.name, quantity: g.billed, unit: p.unit || 'stk', unit_price: g.price, total_price: Math.round(g.price * g.billed * 100) / 100 });
+        if (g.free > 0)   itemsToInsert.push({ receipt_id: receipt.id, ingredient_id: ing.id, item_name: p.name + ' (ikke fakturert)', quantity: g.free, unit: p.unit || 'stk', unit_price: 0, total_price: 0 });
+        receivedByIng[ing.id] = (receivedByIng[ing.id] || 0) + g.billed + g.free;
       }
-      itemsToInsert.push({
-        receipt_id: receipt.id,
-        ingredient_id: ing.id,
-        item_name: p.name,
-        quantity: qty,
-        unit: p.unit || 'stk',
-        unit_price: p.price,
-        total_price: p.price * qty
-      });
+      if (itemsToInsert.length > 0) await sbPost('purchase_items', itemsToInsert);
+    } catch(e) {
+      // Don't leave a receipt header without items
+      try { await sbDelete(`purchase_receipts?id=eq.${receipt.id}`); } catch(e2) {}
+      throw e;
     }
-
-    if (itemsToInsert.length > 0) await sbPost('purchase_items', itemsToInsert);
 
     // Auto-produce: create production_log entries for products with auto_canteen_produce = true
     try {
       const deliveryDate = receiptDate; // use the staff-selected receipt date, not order created_at
-      const ingIds = itemsToInsert.map(i => i.ingredient_id).filter(Boolean);
+      const ingIds = Object.keys(receivedByIng);
       if (ingIds.length > 0) {
         const recipeItems = await sbGet(`recipe_items?ingredient_id=in.(${ingIds.join(',')})&select=cafe_product_id,ingredient_id,quantity`);
-        if (recipeItems.length > 0) {
-          const cpIds = [...new Set(recipeItems.map(r => r.cafe_product_id))];
-          const autoProds = ST.cafeProducts.filter(p => cpIds.includes(p.id) && p.auto_canteen_produce);
-          const prodLogs = [];
-          for (const prod of autoProds) {
-            const rel = recipeItems.filter(r => r.cafe_product_id === prod.id);
-            for (const ri of rel) {
-              const deliveredItem = itemsToInsert.find(i => i.ingredient_id === ri.ingredient_id);
-              if (!deliveredItem) continue;
-              // Kantine orders are already finished products — quantity ordered = quantity produced
-              const produced = deliveredItem.quantity;
-              if (produced > 0) {
-                prodLogs.push({
-                  cafe_product_id: prod.id,
-                  product_name: prod.name,
-                  quantity_produced: produced,
-                  log_date: deliveryDate,
-                  source: 'kantine'
-                });
-              }
+        const cpIds = [...new Set(recipeItems.map(r => r.cafe_product_id))];
+        const autoProds = ST.cafeProducts.filter(p => cpIds.includes(p.id) && p.auto_canteen_produce);
+        const prodLogs = [];
+        for (const prod of autoProds) {
+          for (const ri of recipeItems.filter(r => r.cafe_product_id === prod.id)) {
+            // Kantine orders are already finished products — quantity received = quantity produced
+            const produced = receivedByIng[ri.ingredient_id] || 0;
+            if (produced > 0) {
+              prodLogs.push({
+                cafe_product_id: prod.id,
+                product_name: prod.name,
+                quantity_produced: produced,
+                log_date: deliveryDate,
+                source: 'kantine',
+                purchase_receipt_id: receipt.id
+              });
             }
           }
-          if (prodLogs.length > 0) {
-            await sbPost('production_log', prodLogs);
-            const names = autoProds.map(p => p.name).join(', ');
-            showAlert(`Kantinebestilling importert! Auto-produsert: ${names}`);
-          } else {
-            showAlert('Kantinebestilling importert som innkjøp!');
+        }
+        if (prodLogs.length > 0) {
+          try { await sbPost('production_log', prodLogs); }
+          catch(e) {
+            // purchase_receipt_id column missing (migration not run) — save without the link
+            await sbPost('production_log', prodLogs.map(({ purchase_receipt_id, ...r }) => r));
           }
+          showAlert(`Kantinebestilling importert! Auto-produsert: ${autoProds.map(p => p.name).join(', ')}`);
         } else {
           showAlert('Kantinebestilling importert som innkjøp!');
         }
