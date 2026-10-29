@@ -456,18 +456,33 @@ function buildOrders(){
 
 function printedLabel(o){
   if(o.canteen_printed_at)return 'Skrevet ut av kantinen '+new Date(o.canteen_printed_at).toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
-  return 'Ikke skrevet ut av kantinen ennå';
+  // Orders approved in the old flow have status accepted but no print date
+  return o.status==="accepted"?'':'Ikke skrevet ut av kantinen ennå';
 }
 
-// Compact product list used on order cards
+// Compact product list used on order cards.
+// withRecv: false = note column, true = received column, "staff" = received column with buttons per line
 function linesTable(o,withRecv){
+  const staff=withRecv==="staff";
   let html='<table><thead><tr><th>Produkt</th><th>Dag</th><th>Antall</th>'+(withRecv?'<th>Hentet</th>':'<th>Notat</th>')+'</tr></thead><tbody>';
   orderLines(o).forEach(function(l){
     const p=getProd(l.pid);if(!p)return;
     html+='<tr'+(l.rejected?' class="rejected-row"':'')+'><td style="font-weight:500">'+(l.first?p.name:'<span style="color:var(--text3)">↳</span>')+'</td><td class="item-note">'+l.day+'</td><td style="white-space:nowrap;font-weight:600">'+fmtQty(l.ordered)+'&nbsp;'+p.unit+'</td>';
     if(withRecv){
       const q=lineReceivedQty(o,l);
-      html+='<td style="white-space:nowrap">'+(l.rejected?'<span class="item-note">strøket</span>':q===null?'<span style="color:var(--text3)">—</span>':fmtQty(q)+'&nbsp;'+p.unit+' '+diffBadge(q-l.ordered))+'</td>';
+      if(l.rejected)html+='<td><span class="item-note">strøket</span></td>';
+      else if(q===null)html+='<td style="white-space:nowrap">'+(staff
+        ?'<button class="btn btn-sm btn-green no-print" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Hentet</button> <button class="btn btn-sm no-print" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Annet antall</button>'
+        :'<span style="color:var(--text3)">—</span>')+'</td>';
+      else{
+        const r=lineRecv(o,l)||{};
+        html+='<td style="white-space:nowrap">'+fmtQty(q)+'&nbsp;'+p.unit+' '+diffBadge(q-l.ordered);
+        if(staff){
+          const when=r.date?new Date(r.date).toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"short"}):'';
+          html+=' <span class="item-note">'+[r.by||'',when].filter(Boolean).join(', ')+'</span> <button class="btn btn-sm no-print" style="padding:2px 8px;font-size:12px" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Endre</button>';
+        }
+        html+='</td>';
+      }
     } else html+='<td class="item-note">'+l.note+'</td>';
     html+='</tr>';
   });
@@ -530,7 +545,8 @@ function buildCanteen(){
     html+='<div class="info-banner">&#x2139;&#xFE0F; '+(notPrinted.length===1?"1 bestilling er":notPrinted.length+" bestillinger er")+' ikke skrevet ut av kantinen enn\xe5.</div>';
   }
   if(open.length>0){
-    html+='<p class="section-label">\xc5pne bestillinger — registrer det dere f\xe5r fra kantinen</p>';
+    html+='<p class="section-label">\xc5pne bestillinger — registrer hver vare n\xe5r dere henter den</p>';
+    html+='<div class="row" style="gap:8px;margin-bottom:10px"><label for="c-init" style="font-size:14px;font-weight:500">Dine initialer:</label><input type="text" id="c-init" maxlength="5" value="'+escA(getInitials())+'" oninput="setInitials(this.value.trim().toUpperCase())" placeholder="F.eks. AB" style="width:110px;text-transform:uppercase;font-size:16px"></div>';
     open.forEach(function(o){
       const lines=orderLines(o).filter(function(l){return !l.rejected;});
       const done=lines.filter(function(l){return isLineDone(o,l);}).length;
@@ -538,10 +554,10 @@ function buildCanteen(){
       html+='<div class="card" style="border-color:#85B7EB">';
       html+='<div class="card-header"><span class="card-title">Bestilling #'+o.id+' — '+weekLabel(o.week)+'</span><span class="badge badge-'+o.status+'">'+statusLabel(o.status)+'</span><div class="spacer"></div><span style="font-size:13px;color:var(--text2)">'+done+'/'+lines.length+' registrert</span></div>';
       html+='<div class="pickup-progress"><div class="pickup-bar" style="width:'+pct+'%"></div></div>';
-      html+=linesTable(o,true);
+      html+=linesTable(o,"staff");
       if(o.note)html+='<p class="order-note">Notat: '+o.note+'</p>';
       if(o.canteen_note)html+='<p class="order-note" style="color:var(--text2)">&#x1F4CB; Kantinens melding: '+o.canteen_note+'</p>';
-      html+='<div class="row" style="margin-top:12px;gap:8px"><button class="btn btn-primary btn-big" style="width:auto;margin:0" onclick="openMottak('+o.id+')">&#x1F4E6; Registrer mottak</button><span style="font-size:12px;color:var(--text3)">'+printedLabel(o)+'</span></div>';
+      html+='<div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap"><button class="btn btn-sm" onclick="openMottak('+o.id+')">Ekstra varer / avslutt bestillingen</button><span style="font-size:12px;color:var(--text3)">'+printedLabel(o)+'</span></div>';
       html+='</div>';
     });
   } else {
@@ -1068,12 +1084,33 @@ async function toggleRejectItem(orderId, key){
 function escA(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");}
 
 function openMottak(id){
-  S.mottakId=id;S.mottakStep=null;S.mottakDraft={};S.mottakEdit={};S.mottakErr=null;S.mottakShort=null;
+  S.mottakId=id;S.mottakStep=null;S.mottakDraft={};S.mottakEdit={};S.mottakErr=null;S.mottakShort=null;S.mottakOnly=null;
   S.modal="mottak";render();
 }
+// Small window for one line: a different quantity than ordered, or correcting a registered line
+function openMottakLine(id,key){
+  openMottak(id);S.mottakOnly=key;S.mottakEdit[key]=true;render();
+}
 function closeMottak(){
-  S.modal=null;S.mottakId=null;S.mottakStep=null;S.mottakDraft={};S.mottakEdit={};S.mottakErr=null;S.mottakShort=null;
+  S.modal=null;S.mottakId=null;S.mottakStep=null;S.mottakDraft={};S.mottakEdit={};S.mottakErr=null;S.mottakShort=null;S.mottakOnly=null;
   loadAll();
+}
+// One tap on the order card: the line came exactly as ordered
+async function quickReceive(id,key){
+  const init=readInitials();if(!init)return;
+  const o=S.orders.find(function(x){return x.id===id;});if(!o)return;
+  const l=orderLines(o).find(function(x){return x.key===key;});if(!l)return;
+  const rec=Object.assign({},o.received||{});
+  rec[key]={qty:l.ordered,price:currentPrice(l.pid),date:new Date().toISOString(),by:init,note:"",no_invoice:false};
+  try{await db.updateOrder(id,{received:rec});o.received=rec;await afterLineRegistered(o);}
+  catch(e){showAlert("Kunne ikke lagre: "+e.message,"error");}
+}
+// When the last line of an order is registered from the card, the order is finished automatically
+async function afterLineRegistered(o){
+  const allDone=orderLines(o).every(function(l){return isLineDone(o,l);});
+  if(allDone){await completeMottak(o.id,null);return;}
+  if(S.mottakOnly){S.modal=null;S.mottakId=null;S.mottakOnly=null;S.mottakEdit={};S.mottakDraft={};}
+  render();
 }
 function mottakError(msg){S.mottakErr=msg;render();const el=document.querySelector(".modal-bg");if(el)el.scrollTop=0;}
 
@@ -1099,7 +1136,9 @@ function buildMottakModal(){
   html+='<div class="form-row"><label>Dine initialer</label><input type="text" id="m-init" maxlength="5" value="'+escA(getInitials())+'" oninput="setInitials(this.value.trim().toUpperCase())" placeholder="F.eks. AB" style="width:120px;text-transform:uppercase;font-size:16px"></div>';
   html+='<p style="font-size:13px;color:var(--text2);margin-bottom:4px">Tell varene. Skriv antallet dere fikk, og trykk <b>&#x2713; Mottatt</b>.</p>';
 
+  const only=S.mottakOnly;
   orderLines(o).forEach(function(l){
+    if(only&&l.key!==only)return;
     const p=getProd(l.pid);if(!p)return;
     const name=p.name+(l.day?' <span class="item-note" style="font-size:13px">('+l.day+')</span>':'');
     if(l.rejected){
@@ -1128,7 +1167,7 @@ function buildMottakModal(){
       html+='<span style="font-size:13px;color:var(--text2)">'+p.unit+'</span>';
       html+='<button class="btn btn-green" onclick="registerLine('+o.id+',\''+k+'\',false)">&#x2713; Mottatt</button>';
       html+='<button class="btn btn-sm" onclick="registerLine('+o.id+',\''+k+'\',true)">Ikke levert</button>';
-      if(r)html+='<button class="btn btn-sm" style="color:var(--text3)" onclick="cancelEditLine(\''+k+'\')">Avbryt</button>';
+      if(r&&!only)html+='<button class="btn btn-sm" style="color:var(--text3)" onclick="cancelEditLine(\''+k+'\')">Avbryt</button>';
       html+='</div>';
       html+='<div id="mx-'+k+'" style="margin-top:8px;'+(diff?'':'display:none')+'">';
       html+='<input type="text" id="mc-'+k+'" value="'+escA(dv.note!=null?dv.note:(r?r.note:''))+'" oninput="mottakNote(\''+k+'\',this.value)" placeholder="Kommentar (valgfritt), f.eks. utsolgt" style="font-size:13px;padding:6px 8px">';
@@ -1137,6 +1176,10 @@ function buildMottakModal(){
     }
     html+='</div>';
   });
+  if(only){
+    html+='<div class="modal-footer"><div class="spacer"></div><button class="btn" onclick="closeMottak()">Lukk</button></div>';
+    return html+'</div></div>';
+  }
 
   // Extra items: received but not ordered (over-delivery of other products, substitutions)
   html+='<p class="section-label" style="margin-top:1.25rem">Ekstra varer (ikke bestilt)</p>';
@@ -1183,9 +1226,14 @@ function editMottakLine(k){S.mottakEdit[k]=true;S.mottakErr=null;render();}
 function cancelEditLine(k){delete S.mottakEdit[k];delete S.mottakDraft[k];render();}
 
 function readInitials(){
-  const el=document.getElementById("m-init");
+  const el=document.getElementById("m-init")||document.getElementById("c-init");
   const v=(el?el.value:getInitials()).trim().toUpperCase();
-  if(v.length<2){mottakError("Skriv initialene dine f\xf8rst (minst 2 bokstaver).");const e2=document.getElementById("m-init");if(e2)e2.focus();return null;}
+  if(v.length<2){
+    const msg="Skriv initialene dine f\xf8rst (minst 2 bokstaver).";
+    if(S.modal==="mottak")mottakError(msg);else showAlert(msg,"error");
+    const e2=document.getElementById("m-init")||document.getElementById("c-init");if(e2)e2.focus();
+    return null;
+  }
   setInitials(v);return v;
 }
 function currentPrice(pid){const p=getProd(pid);return p?Number(p.price)||0:0;}
@@ -1212,7 +1260,7 @@ async function registerLine(id,key,notDelivered){
   try{
     await db.updateOrder(id,{received:rec});
     o.received=rec;delete S.mottakEdit[key];delete S.mottakDraft[key];S.mottakErr=null;
-    render();
+    if(S.mottakOnly)await afterLineRegistered(o);else render();
   }catch(e){mottakError("Kunne ikke lagre: "+e.message);}
 }
 
@@ -1259,9 +1307,10 @@ async function completeMottak(id,mode){
     Object.assign(o,update);
     const short=[];
     orderLines(o).forEach(function(l){const d=lineDiff(o,l);if(d<0)short.push({pid:l.pid,day:l.day,missing:-d});});
-    if(short.length>0){S.mottakShort=short;S.mottakStep="done";S.mottakErr=null;render();}
-    else{S.modal=null;S.mottakId=null;S.mottakStep=null;await loadAll();showAlert("Mottak fullf\xf8rt for bestilling #"+id+".");}
-  }catch(e){mottakError("Kunne ikke lagre: "+e.message);}
+    S.mottakOnly=null;S.mottakEdit={};S.mottakDraft={};
+    if(short.length>0){S.mottakShort=short;S.mottakId=id;S.mottakStep="done";S.mottakErr=null;S.modal="mottak";render();}
+    else{S.modal=null;S.mottakId=null;S.mottakStep=null;await loadAll();showAlert("Alt er registrert — bestilling #"+id+" er fullf\xf8rt.");}
+  }catch(e){if(S.modal==="mottak")mottakError("Kunne ikke lagre: "+e.message);else showAlert("Kunne ikke lagre: "+e.message,"error");}
 }
 
 // Open a new draft order with what was missing, so the café can check it before sending
