@@ -460,6 +460,13 @@ function printedLabel(o){
   return o.status==="accepted"?'':'Ikke skrevet ut av kantinen ennå';
 }
 
+// When a line was registered, e.g. "tor. 29. okt. kl. 10:55"
+function recvWhen(r){
+  if(!r||!r.date)return '';
+  const d=new Date(r.date);
+  return d.toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"short"})+' kl. '+d.toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"});
+}
+
 // Compact product list used on order cards.
 // withRecv: false = note column, true = received column, "staff" = received column with buttons per line
 function linesTable(o,withRecv){
@@ -478,8 +485,7 @@ function linesTable(o,withRecv){
         const r=lineRecv(o,l)||{};
         html+='<td style="white-space:nowrap">'+fmtQty(q)+'&nbsp;'+p.unit+' '+diffBadge(q-l.ordered);
         if(staff){
-          const when=r.date?new Date(r.date).toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"short"}):'';
-          html+=' <span class="item-note">'+[r.by||'',when].filter(Boolean).join(', ')+'</span> <button class="btn btn-sm no-print" style="padding:2px 8px;font-size:12px" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Endre</button>';
+          html+=' <span class="item-note">'+[r.by||'',recvWhen(r)].filter(Boolean).join(', ')+'</span> <button class="btn btn-sm no-print" style="padding:2px 8px;font-size:12px" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Endre</button>';
         }
         html+='</td>';
       }
@@ -1153,7 +1159,7 @@ function buildMottakModal(){
     if(!editing){
       const q=Number(r.qty)||0;
       html+='<div class="ml-ctrl"><span style="font-size:15px">&#x2713; Mottatt: <b>'+fmtQty(q)+'&nbsp;'+p.unit+'</b></span>'+diffBadge(q-l.ordered);
-      html+='<span class="item-note">'+(r.by||'')+(r.note?' — '+r.note:'')+(r.no_invoice&&q>l.ordered?' — ekstra ikke fakturert':'')+'</span>';
+      html+='<span class="item-note">'+[r.by||'',recvWhen(r)].filter(Boolean).join(', ')+(r.note?' — '+r.note:'')+(r.no_invoice&&q>l.ordered?' — ekstra ikke fakturert':'')+'</span>';
       html+='<div class="spacer"></div><button class="btn btn-sm" onclick="editMottakLine(\''+l.key+'\')">Endre</button></div>';
     } else {
       const dv=draft[l.key]||{};
