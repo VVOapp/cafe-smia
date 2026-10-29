@@ -245,7 +245,17 @@ function linePrice(o,l){
 }
 function extraPrice(e){if(e.price!=null)return Number(e.price);const p=getProd(e.pid);return p?Number(p.price)||0:0;}
 function extraBilledQty(e){return e.no_invoice?0:Number(e.qty)||0;}
-function isLineDone(o,l){return l.rejected||!!lineRecv(o,l);}
+// A line with rest_pending got part of the amount; the rest comes another day, so it is not done yet
+function isLinePartial(o,l){const r=lineRecv(o,l);return !l.rejected&&!!r&&!!r.rest_pending;}
+function isLineDone(o,l){return l.rejected||(!!lineRecv(o,l)&&!isLinePartial(o,l));}
+// Pickups of a split delivery, e.g. "0.5 PS man. 09:40 + 0.5 AB ons. 10:15"
+function partsLabel(r){
+  if(!r||!r.parts||r.parts.length<2&&!r.rest_pending)return '';
+  return r.parts.map(function(p){
+    const d=new Date(p.date);
+    return fmtQty(p.qty)+' '+(p.by||'')+' '+d.toLocaleDateString("nb-NO",{weekday:"short"})+' '+d.toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"});
+  }).join(' + ');
+}
 function lineDiff(o,l){const q=lineReceivedQty(o,l);return q===null||l.rejected?0:q-l.ordered;}
 function orderHasAvvik(o){
   if((o.extra_items||[]).length>0)return true;
@@ -481,12 +491,19 @@ function linesTable(o,withRecv){
       else if(q===null)html+='<td style="white-space:nowrap">'+(staff
         ?'<button class="btn btn-sm btn-green no-print" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Hentet</button> <button class="btn btn-sm no-print" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Annet antall</button>'
         :'<span style="color:var(--text3)">—</span>')+'</td>';
+      else if(isLinePartial(o,l)){
+        const r=lineRecv(o,l);
+        html+='<td style="white-space:nowrap">'+fmtQty(q)+' av '+fmtQty(l.ordered)+'&nbsp;'+p.unit+' hentet <span class="diff-badge over">resten kommer</span>';
+        if(staff)html+=' <button class="btn btn-sm btn-green no-print" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Resten hentet</button> <button class="btn btn-sm no-print" style="padding:2px 8px;font-size:12px" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Endre</button>';
+        html+='<div class="item-note">'+partsLabel(r)+'</div></td>';
+      }
       else{
         const r=lineRecv(o,l)||{};
         html+='<td style="white-space:nowrap">'+fmtQty(q)+'&nbsp;'+p.unit+' '+diffBadge(q-l.ordered);
         if(staff){
           html+=' <span class="item-note">'+[r.by||'',recvWhen(r)].filter(Boolean).join(', ')+'</span> <button class="btn btn-sm no-print" style="padding:2px 8px;font-size:12px" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Endre</button>';
         }
+        const pl=partsLabel(r);if(pl)html+='<div class="item-note">'+pl+'</div>';
         html+='</td>';
       }
     } else html+='<td class="item-note">'+l.note+'</td>';
@@ -1107,7 +1124,14 @@ async function quickReceive(id,key){
   const o=S.orders.find(function(x){return x.id===id;});if(!o)return;
   const l=orderLines(o).find(function(x){return x.key===key;});if(!l)return;
   const rec=Object.assign({},o.received||{});
-  rec[key]={qty:l.ordered,price:currentPrice(l.pid),date:new Date().toISOString(),by:init,note:"",no_invoice:false};
+  const now=new Date().toISOString();
+  const prev=lineRecv(o,l);
+  if(prev&&prev.rest_pending){
+    // Split delivery: the rest of a partly picked-up line arrived
+    const got=Number(prev.qty)||0;
+    const parts=(prev.parts||[{qty:got,date:prev.date,by:prev.by}]).concat([{qty:Math.max(0,l.ordered-got),date:now,by:init}]);
+    rec[key]=Object.assign({},prev,{qty:Math.max(got,l.ordered),date:now,by:init,parts:parts,rest_pending:false});
+  } else rec[key]={qty:l.ordered,price:currentPrice(l.pid),date:now,by:init,note:"",no_invoice:false};
   try{await db.updateOrder(id,{received:rec});o.received=rec;await afterLineRegistered(o);}
   catch(e){showAlert("Kunne ikke lagre: "+e.message,"error");}
 }
@@ -1156,7 +1180,11 @@ function buildMottakModal(){
     html+='<div class="mottak-line'+(editing?'':' done')+'">';
     html+='<div class="ml-head"><span class="ml-name">'+name+'</span><span class="ml-ord">Bestilt: <b>'+fmtQty(l.ordered)+'&nbsp;'+p.unit+'</b></span></div>';
     if(l.note)html+='<div class="item-note" style="margin:-4px 0 6px">'+l.note+'</div>';
-    if(!editing){
+    if(!editing&&r.rest_pending){
+      html+='<div class="ml-ctrl"><span style="font-size:15px">Hentet: <b>'+fmtQty(Number(r.qty)||0)+' av '+fmtQty(l.ordered)+'&nbsp;'+p.unit+'</b></span><span class="diff-badge over">resten kommer</span>';
+      html+='<span class="item-note">'+partsLabel(r)+'</span>';
+      html+='<div class="spacer"></div><button class="btn btn-sm btn-green" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Resten hentet</button><button class="btn btn-sm" onclick="editMottakLine(\''+l.key+'\')">Endre</button></div>';
+    } else if(!editing){
       const q=Number(r.qty)||0;
       html+='<div class="ml-ctrl"><span style="font-size:15px">&#x2713; Mottatt: <b>'+fmtQty(q)+'&nbsp;'+p.unit+'</b></span>'+diffBadge(q-l.ordered);
       html+='<span class="item-note">'+[r.by||'',recvWhen(r)].filter(Boolean).join(', ')+(r.note?' — '+r.note:'')+(r.no_invoice&&q>l.ordered?' — ekstra ikke fakturert':'')+'</span>';
@@ -1178,6 +1206,8 @@ function buildMottakModal(){
       html+='<div id="mx-'+k+'" style="margin-top:8px;'+(diff?'':'display:none')+'">';
       html+='<input type="text" id="mc-'+k+'" value="'+escA(dv.note!=null?dv.note:(r?r.note:''))+'" oninput="mottakNote(\''+k+'\',this.value)" placeholder="Kommentar (valgfritt), f.eks. utsolgt" style="font-size:13px;padding:6px 8px">';
       html+='<label id="mniw-'+k+'" style="'+(Number(val)>l.ordered?'display:flex':'display:none')+';align-items:center;gap:6px;font-size:13px;margin-top:6px;cursor:pointer"><input type="checkbox" id="mni-'+k+'" style="width:auto"'+((dv.ni!=null?dv.ni:(r&&r.no_invoice))?' checked':'')+' onchange="mottakNi(\''+k+'\',this.checked)"> Ikke fakturer det ekstra</label>';
+      const restOn=dv.rest!=null?dv.rest:!!(r&&r.rest_pending);
+      html+='<label id="mrestw-'+k+'" style="'+(Number(val)>0&&Number(val)<l.ordered?'display:flex':'display:none')+';align-items:center;gap:6px;font-size:14px;margin-top:6px;cursor:pointer"><input type="checkbox" id="mrest-'+k+'" style="width:auto"'+(restOn?' checked':'')+' onchange="mottakDraftFor(\''+k+'\').rest=this.checked"> Resten kommer senere</label>';
       html+='</div>';
     }
     html+='</div>';
@@ -1205,7 +1235,7 @@ function buildMottakModal(){
   if(S.mottakStep==="unregistered"){
     const unreg=orderLines(o).filter(function(l){return !isLineDone(o,l);});
     html+='<div class="mottak-panel"><p style="font-weight:600;margin-bottom:6px">'+(unreg.length===1?'1 vare er':unreg.length+' varer er')+' ikke registrert:</p><ul style="margin:0 0 10px 18px;font-size:13px">';
-    unreg.forEach(function(l){const p=getProd(l.pid);html+='<li>'+(p?p.name:"?")+(l.day?' ('+l.day+')':'')+' — '+fmtQty(l.ordered)+'&nbsp;'+(p?p.unit:"")+'</li>';});
+    unreg.forEach(function(l){const p=getProd(l.pid);const r=lineRecv(o,l);html+='<li>'+(p?p.name:"?")+(l.day?' ('+l.day+')':'')+' — '+(r?fmtQty(Number(r.qty)||0)+' av ':'')+fmtQty(l.ordered)+'&nbsp;'+(p?p.unit:"")+(r?' hentet, resten kommer':'')+'</li>';});
     html+='</ul><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn btn-green" onclick="completeMottak('+o.id+',\'asOrdered\')">Vi fikk alt som bestilt</button><button class="btn" onclick="completeMottak('+o.id+',\'zero\')">Vi fikk ikke disse</button><button class="btn btn-sm" style="color:var(--text3)" onclick="S.mottakStep=null;render()">Tilbake</button></div></div>';
   }
 
@@ -1220,6 +1250,7 @@ function mottakInput(k,ordered){
   mottakDraftFor(k).qty=el.value;
   const box=document.getElementById("mx-"+k);if(box)box.style.display=(!isNaN(v)&&v!==ordered)?"":"none";
   const ni=document.getElementById("mniw-"+k);if(ni)ni.style.display=(!isNaN(v)&&v>ordered)?"flex":"none";
+  const rw=document.getElementById("mrestw-"+k);if(rw)rw.style.display=(!isNaN(v)&&v>0&&v<ordered)?"flex":"none";
 }
 function mottakStep(k,delta,ordered){
   const el=document.getElementById("mq-"+k);if(!el)return;
@@ -1253,16 +1284,25 @@ async function registerLine(id,key,notDelivered){
   if(isNaN(qty)||qty<0){mottakError("Skriv et gyldig antall.");return;}
   const cEl=document.getElementById("mc-"+key);
   const niEl=document.getElementById("mni-"+key);
+  const restEl=document.getElementById("mrest-"+key);
   const prev=lineRecv(o,l);
   const rec=Object.assign({},o.received||{});
+  const now=new Date().toISOString();
+  const restPending=!notDelivered&&!!(restEl&&restEl.checked)&&qty>0&&qty<l.ordered;
+  // Keep the pickup history of a split delivery when more has arrived; otherwise start it fresh
+  let parts=null;
+  if(prev&&prev.parts&&qty>Number(prev.qty))parts=prev.parts.concat([{qty:qty-Number(prev.qty),date:now,by:init}]);
+  else if(restPending)parts=[{qty:qty,date:now,by:init}];
   rec[key]={
     qty:qty,
     price:prev&&prev.price!=null?prev.price:currentPrice(l.pid),
-    date:new Date().toISOString(),
+    date:now,
     by:init,
     note:notDelivered&&!(cEl&&cEl.value.trim())?"Ikke levert":(qty!==l.ordered&&cEl?cEl.value.trim():""),
     no_invoice:!!(niEl&&niEl.checked&&qty>l.ordered)
   };
+  if(parts)rec[key].parts=parts;
+  if(restPending)rec[key].rest_pending=true;
   try{
     await db.updateOrder(id,{received:rec});
     o.received=rec;delete S.mottakEdit[key];delete S.mottakDraft[key];S.mottakErr=null;
@@ -1304,6 +1344,15 @@ async function completeMottak(id,mode){
   const now=new Date().toISOString();
   orderLines(o).forEach(function(l){
     if(isLineDone(o,l))return;
+    const prev=lineRecv(o,l);
+    if(prev&&prev.rest_pending){
+      // Partly picked up: "we got everything" adds the rest, "we didn't get these" keeps what came
+      const got=Number(prev.qty)||0;
+      if(mode==="zero")rec[l.key]=Object.assign({},prev,{rest_pending:false,note:prev.note||"Resten kom ikke"});
+      else rec[l.key]=Object.assign({},prev,{qty:Math.max(got,l.ordered),date:now,by:init,rest_pending:false,
+        parts:(prev.parts||[{qty:got,date:prev.date,by:prev.by}]).concat([{qty:Math.max(0,l.ordered-got),date:now,by:init}])});
+      return;
+    }
     rec[l.key]={qty:mode==="zero"?0:l.ordered,price:currentPrice(l.pid),date:now,by:init,note:mode==="zero"?"Ikke levert":"",no_invoice:false};
   });
   // Keep the first receipt date when an admin re-closes a reopened order, so it stays in the same invoice month
