@@ -385,7 +385,7 @@ function buildOrders(){
     const showRecv=o.status!=="draft";
     html+='<div class="card">';
     html+='<div class="card-header">';
-    html+='<span class="card-title">'+weekLabel(o.week)+'</span>';
+    html+='<span class="card-title">'+weekLabel(o.week)+' <span style="font-weight:400;color:var(--text2)">(#'+o.id+')</span></span>';
     html+='<span class="badge badge-'+o.status+'">'+statusLabel(o.status)+'</span>';
     if(o.status==="delivered"&&orderHasAvvik(o))html+='<span class="badge badge-avvik">avvik</span>';
     html+='<div class="spacer"></div>';
@@ -500,7 +500,7 @@ function linesTable(o,withRecv){
 }
 
 function buildCanteen(){
-  const open=S.orders.filter(o=>o.status==="pending"||o.status==="accepted").sort(function(a,b){return a.week<b.week?-1:a.week>b.week?1:a.id-b.id;});
+  const open=S.orders.filter(o=>o.status==="pending"||o.status==="accepted").sort(function(a,b){return a.week<b.week?1:a.week>b.week?-1:b.id-a.id;}); // newest first
   const history=S.orders.filter(o=>o.status==="delivered");
   let html="";
 
@@ -525,7 +525,7 @@ function buildCanteen(){
         const lines=orderLines(o).filter(function(l){return !l.rejected;});
         const done=lines.filter(function(l){return isLineDone(o,l);}).length;
         html+='<div class="card">';
-        html+='<div class="card-header"><span class="card-title">'+weekLabel(o.week)+'</span><span style="font-size:13px;color:var(--text2)">'+done+'/'+lines.length+' hentet</span><div class="spacer"></div><button class="btn btn-sm no-print" onclick="canteenPrint('+o.id+')">&#x1F5A8; Skriv ut igjen</button></div>';
+        html+='<div class="card-header"><span class="card-title">'+weekLabel(o.week)+' <span style="font-weight:400;color:var(--text2)">(#'+o.id+')</span></span><span style="font-size:13px;color:var(--text2)">'+done+'/'+lines.length+' hentet</span><div class="spacer"></div><button class="btn btn-sm no-print" onclick="canteenPrint('+o.id+')">&#x1F5A8; Skriv ut igjen</button></div>';
         html+=linesTable(o,true);
         if(o.note)html+='<p class="order-note">Notat fra kaf\xe9en: '+o.note+'</p>';
         html+='<div class="row" style="margin-top:10px;gap:6px"><input type="text" id="cnote-'+o.id+'" value="'+(o.canteen_note||'').replace(/"/g,"&quot;")+'" placeholder="Melding til kaf\xe9en (valgfritt), f.eks. «boller kommer tirsdag»" style="flex:1;font-size:13px"><button class="btn btn-sm" onclick="saveCanteenNote('+o.id+')">Lagre</button></div>';
