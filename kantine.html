@@ -818,7 +818,8 @@ function buildModal(){
     const o=S.draft;
     const isEdit=!!o.id;
     let html='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">';
-    html+='<h3>'+(isEdit?"Rediger bestilling":"Ny ukentlig bestilling")+'</h3>';
+    html+='<h3>'+(isEdit?"Rediger bestilling #"+o.id:"Ny ukentlig bestilling")+'</h3>';
+    if(o.info)html+='<div class="info-banner">'+o.info+'</div>';
     html+='<div class="form-row"><label>Uke</label><input type="week" id="m-week" value="'+o.week+'"></div>';
     html+='<div class="form-row"><label>Notat til kantinen (valgfritt)</label><textarea id="m-note">'+(o.note||'')+'</textarea></div>';
     html+='<p class="section-label" style="margin-top:4px;margin-bottom:10px">Velg antall og notat per produkt</p>';
@@ -1159,7 +1160,8 @@ function buildMottakModal(){
     html+='<p style="font-size:14px;font-weight:600;margin-bottom:6px">Dette fikk dere ikke:</p><table><tbody>';
     short.forEach(function(s){const p=getProd(s.pid);html+='<tr><td>'+(p?p.name:"?")+(s.day?' <span class="item-note">('+s.day+')</span>':'')+'</td><td style="text-align:right;font-weight:600">'+fmtQty(s.missing)+'&nbsp;'+(p?p.unit:"")+'</td></tr>';});
     html+='</tbody></table>';
-    html+='<div class="modal-footer"><button class="btn btn-primary" onclick="reorderRest()">Bestill resten p\xe5 nytt</button><div class="spacer"></div><button class="btn" onclick="closeMottak()">Ferdig</button></div>';
+    const nxt=nextOpenOrder(o);
+    html+='<div class="modal-footer"><button class="btn btn-primary" onclick="reorderRest()">'+(nxt?'Legg til i bestillingen for '+weekLabel(nxt.week).toLowerCase()+' (#'+nxt.id+')':'Bestill resten p\xe5 nytt')+'</button><div class="spacer"></div><button class="btn" onclick="closeMottak()">Ferdig</button></div>';
     return html+'</div></div>';
   }
 
@@ -1368,7 +1370,15 @@ async function completeMottak(id,mode){
   }catch(e){if(S.modal==="mottak")mottakError("Kunne ikke lagre: "+e.message);else showAlert("Kunne ikke lagre: "+e.message,"error");}
 }
 
-// Open a new draft order with what was missing, so the café can check it before sending
+// The earliest open order after this one (this week or later), which the missing items can be added to
+function nextOpenOrder(o){
+  const cur=weekStr(new Date());
+  return S.orders.filter(function(x){return o&&x.id!==o.id&&["draft","pending","accepted"].indexOf(x.status)>=0&&x.week>o.week&&x.week>=cur;})
+    .sort(function(a,b){return a.week<b.week?-1:a.week>b.week?1:a.id-b.id;})[0]||null;
+}
+
+// Re-order what was missing: add it to the next open order if there is one, else start a new draft.
+// The order form opens either way, so the café can check it before saving.
 function reorderRest(){
   const o=S.orders.find(function(x){return x.id===S.mottakId;});
   const short=S.mottakShort||[];
@@ -1381,8 +1391,27 @@ function reorderRest(){
   });
   // Mixed split/non-split for one product cannot happen (one item = one product), so splits are all-or-nothing
   const items=Object.values(byPid);
+  const restNote=o?"Rest fra bestilling #"+o.id:"";
+  const target=nextOpenOrder(o);
   S.mottakId=null;S.mottakStep=null;S.mottakShort=null;S.mottakDraft={};S.mottakEdit={};
-  S.draft={week:weekStr(new Date()),items:items,note:o?"Rest fra bestilling #"+o.id:""};
+  if(target){
+    const merged=(target.items||[]).map(function(i){return {...i,splits:i.splits?i.splits.slice():[]};});
+    const added=[];
+    items.forEach(function(it){
+      const p=getProd(it.pid);
+      added.push((p?p.name:"?")+" "+fmtQty(it.qty)+(p?" "+p.unit:""));
+      const ex=merged.find(function(i){return i.pid===it.pid;});
+      if(!ex){merged.push(it);return;}
+      // New splits go after the existing ones, so struck lines keep their position
+      if(ex.splits.length>0)ex.splits=ex.splits.concat(it.splits.length>0?it.splits:[{day:"",qty:it.qty}]);
+      ex.qty=Number(ex.qty)+it.qty;
+    });
+    S.draft={id:target.id,week:target.week,items:merged,note:[target.note||"",restNote].filter(Boolean).join(" — "),
+      info:"Lagt til fra bestilling #"+(o?o.id:"")+": "+added.join(", ")+". Sjekk og trykk lagre/send."
+        +(target.status==="draft"?"":" Kantinen f\xe5r den oppdaterte bestillingen som ny, s\xe5 de kan skrive den ut p\xe5 nytt.")};
+  } else {
+    S.draft={week:weekStr(new Date()),items:items,note:restNote};
+  }
   S.modal="order";
   loadAll();
 }
