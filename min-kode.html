@@ -151,6 +151,33 @@ body {
 }
 .promos-loading { font-size: 13px; color: var(--text3); text-align: center; padding: 8px 0; }
 
+/* ── Campaign + feedback ── */
+.campaign { margin: 0 1.5rem 1rem; border: 2px solid var(--accent-border); background: var(--accent-light); border-radius: 12px; padding: 14px 16px; text-align: left; }
+.campaign-name { font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+.campaign-desc { font-size: 13px; color: var(--text); margin-bottom: 8px; }
+.campaign-when { font-size: 12px; color: var(--text2); }
+.campaign-status { margin-top: 10px; font-size: 13px; font-weight: 700; border-radius: 8px; padding: 7px 10px; text-align: center; }
+.cs-open { background: #3B6D11; color: white; }
+.cs-done { background: var(--green-light); color: var(--green); border: 1px solid rgba(58,92,56,0.2); }
+.cs-wait { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
+.starter { margin-top: 10px; background: var(--bg); border: 1px dashed var(--accent-border); border-radius: 10px; padding: 10px 12px; }
+.starter-label { font-size: 11.5px; font-weight: 600; color: var(--text2); }
+.starter-text { font-size: 17px; font-weight: 700; margin: 4px 0 6px; }
+.starter-next { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; }
+.yesno { display: flex; gap: 8px; }
+.yesno button { flex: 1; padding: 9px 0; font-size: 14px; font-weight: 700; background: var(--bg2); color: var(--text); border: 2px solid transparent; border-radius: 10px; cursor: pointer; }
+.yesno button.on { border-color: var(--green); background: var(--green-light); color: var(--green); }
+.feedback { margin: 0 1.5rem 1rem; border: 2px solid var(--green); border-radius: 12px; padding: 14px 16px; text-align: left; background: var(--bg); }
+.feedback h3 { font-size: 15px; color: var(--green); margin-bottom: 10px; }
+.fb-q { font-size: 13px; font-weight: 600; margin: 10px 0 6px; }
+.faces { display: flex; justify-content: space-between; gap: 4px; }
+.faces button { flex: 1; font-size: 26px; padding: 6px 0; background: var(--bg2); border: 2px solid transparent; border-radius: 10px; cursor: pointer; filter: grayscale(0.7); opacity: 0.7; }
+.faces button.on { border-color: var(--green); background: var(--green-light); filter: none; opacity: 1; }
+.feedback textarea { width: 100%; margin-top: 4px; padding: 9px 10px; font-size: 14px; font-family: inherit; border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg2); color: var(--text); resize: vertical; }
+.fb-actions { display: flex; gap: 8px; margin-top: 12px; }
+.fb-actions .btn-primary { margin: 0; background: var(--green); }
+.fb-skip { background: none; border: none; color: var(--text3); font-size: 12px; cursor: pointer; white-space: nowrap; padding: 0 6px; }
+
 /* ── Migration note ── */
 .migration-note {
   margin: 0 1.5rem 1rem;
@@ -210,6 +237,10 @@ body {
       <div class="tip" id="qr-tip"></div>
     </div>
 
+    <!-- Feedback on today's free campaign drink + campaign info -->
+    <div id="feedback-box"></div>
+    <div id="campaign-box"></div>
+
     <button class="change-link" onclick="changePhone()">Endre telefonnummer</button>
   </div>
 
@@ -236,6 +267,15 @@ async function sbGet(path) {
     if (!res.ok) return [];
     return res.json();
   } catch(e) { return []; }
+}
+
+async function sbPatch(path, body) {
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    method: 'PATCH',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(await res.text() || res.statusText);
 }
 
 // ── Phone normalisation ────────────────────────────────────────
@@ -366,6 +406,9 @@ function changePhone() {
   } catch(e) {}
   document.getElementById('qr-section').style.display = 'none';
   document.getElementById('promos').style.display     = 'none';
+  document.getElementById('feedback-box').innerHTML   = '';
+  document.getElementById('campaign-box').innerHTML   = '';
+  campaignKey = ''; feedbackKey = '';
   document.getElementById('qr-box').innerHTML         = '';
   document.getElementById('phone-setup').style.display = '';
   document.getElementById('phone-input').value         = '';
@@ -375,6 +418,7 @@ function changePhone() {
 // ── Load promotions ────────────────────────────────────────────
 async function loadPromos() {
   if (!activeCode) return;
+  loadCampaign();
 
   const [rules, products, stamps] = await Promise.all([
     sbGet('loyalty_rules?active=eq.true&select=*&order=id'),
@@ -409,6 +453,156 @@ async function loadPromos() {
   }).join('');
 
   document.getElementById('promos').style.display = '';
+}
+
+// ── Campaign (gratis drikke) + feedback ────────────────────────
+// Polled together with the promos; each box only re-renders when its
+// content changes, so a half-filled feedback form isn't wiped.
+const FACES = ['😞','🙁','😐','🙂','😍'];
+const WD_NAMES = { 0:'søn', 1:'man', 2:'tir', 3:'ons', 4:'tor', 5:'fre', 6:'lør' };
+let campaignKey = '', feedbackKey = '';
+const fb = { id: null, talked: null, drink: 0, service: 0 };
+const starters = {};      // campaign id → current conversation starter (kept between polls)
+const starterLists = {};  // campaign id → all starters for the campaign
+
+function nextStarter(cid) {
+  const list = starterLists[cid] || [];
+  if (!list.length) return;
+  let s;
+  do { s = list[Math.floor(Math.random() * list.length)]; } while (list.length > 1 && s === starters[cid]);
+  starters[cid] = s;
+}
+const escH = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function weekdayText(days) {
+  const order = [1,2,3,4,5,6,0].filter(d => days.includes(d));
+  const idx = order.map(d => [1,2,3,4,5,6,0].indexOf(d));
+  const consecutive = idx.every((v, i) => i === 0 || v === idx[i-1] + 1);
+  if (order.length > 2 && consecutive) return WD_NAMES[order[0]] + '–' + WD_NAMES[order[order.length-1]];
+  return order.map(d => WD_NAMES[d]).join(', ');
+}
+
+async function loadCampaign() {
+  const code = activeCode;
+  const today = new Date().toLocaleDateString('sv-SE');
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const [allCampaigns, recent, products, me] = await Promise.all([
+    sbGet(`campaigns?active=eq.true&start_date=lte.${today}&end_date=gte.${today}&select=id,name,description,weekdays,cutoff_time,max_per_day,teachers_only,conversation_starters`),
+    sbGet(`campaign_redemptions?customer_id=eq.${encodeURIComponent(code)}&created_at=gte.${encodeURIComponent(weekAgo)}&select=id,campaign_id,cafe_product_id,feedback_at,created_at&order=created_at.desc`),
+    sbGet('cafe_products?select=id,name'),
+    sbGet(`loyalty_customers?id=eq.${encodeURIComponent(code)}&select=is_teacher`)
+  ]);
+  if (code !== activeCode) return;
+  const nameById = Object.fromEntries(products.map(p => [p.id, p.name]));
+  // Teacher-only campaigns stay invisible until staff have marked this code as a teacher
+  const isTeacher = !!me[0]?.is_teacher;
+  const campaigns = allCampaigns.filter(c => !c.teachers_only || isTeacher);
+
+  // Campaign info card
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  const now = new Date().toTimeString().slice(0, 5);
+  const html = campaigns.map(c => {
+    const usedToday = recent.filter(r => r.campaign_id === c.id && new Date(r.created_at) >= midnight).length;
+    const isDay = (c.weekdays || []).includes(new Date().getDay());
+    let status;
+    if (usedToday >= (c.max_per_day || 1)) status = `<div class="campaign-status cs-done">✅ Brukt i dag – velkommen tilbake!</div>`;
+    else if (isDay && now <= c.cutoff_time) status = `<div class="campaign-status cs-open">☕ Tilgjengelig nå – vis koden i kassen</div>`;
+    else status = `<div class="campaign-status cs-wait">Neste mulighet: ${escH(weekdayText(c.weekdays || []))} før kl. ${escH(c.cutoff_time)}</div>`;
+    const list = starterLists[c.id] = c.conversation_starters || [];
+    if (isDay && list.length && !starters[c.id]) nextStarter(c.id);
+    const starter = isDay && list.length ? `
+      <div class="starter">
+        <div class="starter-label">💬 Samtalestarter – spør den som serverer deg:</div>
+        <div class="starter-text">${escH(starters[c.id])}</div>
+        <button class="starter-next" onclick="nextStarter(${c.id});loadCampaign()">🔄 Et annet spørsmål</button>
+      </div>` : '';
+    return `
+    <div class="campaign">
+      <div class="campaign-name">🎁 ${escH(c.name)}</div>
+      ${c.description ? `<div class="campaign-desc">${escH(c.description)}</div>` : ''}
+      <div class="campaign-when">Gratis drikke ${escH(weekdayText(c.weekdays || []))} før kl. ${escH(c.cutoff_time)}</div>
+      ${status}
+      ${starter}
+    </div>`;
+  }).join('');
+  if (html !== campaignKey) {
+    campaignKey = html;
+    document.getElementById('campaign-box').innerHTML = html;
+  }
+
+  // Feedback card for the most recent drink without feedback
+  const pending = recent.find(r => !r.feedback_at);
+  const key = pending ? String(pending.id) : '';
+  if (key !== feedbackKey) {
+    feedbackKey = key;
+    if (pending) { fb.id = pending.id; fb.talked = null; fb.drink = 0; fb.service = 0; fb.name = nameById[pending.cafe_product_id] || 'drikken'; }
+    renderFeedback(pending ? 'form' : 'none');
+  }
+}
+
+function renderFeedback(mode) {
+  const box = document.getElementById('feedback-box');
+  if (mode === 'none') { box.innerHTML = ''; return; }
+  if (mode === 'thanks') {
+    box.innerHTML = `<div class="feedback"><h3>Takk for tilbakemeldingen! 💛</h3><div style="font-size:13px;color:var(--text2)">Det hjelper oss å lage bedre drikker og bli flinkere i norsk.</div></div>`;
+    return;
+  }
+  const faces = (field) => `<div class="faces">${FACES.map((f, i) =>
+    `<button type="button" class="${fb[field] === i + 1 ? 'on' : ''}" onclick="setRating('${field}', ${i + 1})" aria-label="${i + 1} av 5">${f}</button>`).join('')}</div>`;
+  box.innerHTML = `
+  <div class="feedback">
+    <h3>☕ Hvordan var besøket?</h3>
+    <div class="fb-q">Snakket dere sammen?</div>
+    <div class="yesno" id="fb-talked">
+      <button type="button" class="${fb.talked === true ? 'on' : ''}" onclick="setTalked(true)">💬 Ja</button>
+      <button type="button" class="${fb.talked === false ? 'on' : ''}" onclick="setTalked(false)">Nei</button>
+    </div>
+    <div class="fb-q">Hvordan smakte ${escH(fb.name)}?</div>
+    <div id="fb-drink">${faces('drink')}</div>
+    <div class="fb-q">Hvordan var servicen og samtalen?</div>
+    <div id="fb-service">${faces('service')}</div>
+    <div class="fb-q">Noe du vil si til oss? <span style="font-weight:400;color:var(--text3)">(valgfritt)</span></div>
+    <textarea id="fb-comment" rows="2" placeholder="F.eks. litt for søt, veldig god, hyggelig prat …"></textarea>
+    <div class="fb-actions">
+      <button class="btn-primary" onclick="sendFeedback()">Send</button>
+      <button class="fb-skip" onclick="sendFeedback(true)">Hopp over</button>
+    </div>
+    <div id="fb-error" class="error-box" style="display:none;margin-top:10px"></div>
+  </div>`;
+}
+
+function setTalked(val) {
+  fb.talked = val;
+  document.querySelectorAll('#fb-talked button').forEach((b, i) => b.classList.toggle('on', (i === 0) === val));
+}
+
+function setRating(field, val) {
+  fb[field] = val;
+  document.querySelectorAll(`#fb-${field} button`).forEach((b, i) => b.classList.toggle('on', i + 1 === val));
+}
+
+async function sendFeedback(skip) {
+  const comment = document.getElementById('fb-comment')?.value.trim() || '';
+  if (!skip && fb.talked === null && !fb.drink && !fb.service && !comment) {
+    const err = document.getElementById('fb-error');
+    err.textContent = 'Svar på minst ett av spørsmålene.';
+    err.style.display = '';
+    return;
+  }
+  const body = skip ? { feedback_at: new Date().toISOString() } : {
+    conversation_done: fb.talked,
+    drink_rating: fb.drink || null, service_rating: fb.service || null,
+    comment: comment || null, feedback_at: new Date().toISOString()
+  };
+  try {
+    await sbPatch(`campaign_redemptions?id=eq.${fb.id}&customer_id=eq.${encodeURIComponent(activeCode)}`, body);
+    renderFeedback(skip ? 'none' : 'thanks');
+    feedbackKey = 'sent-' + fb.id;   // the next poll clears the thank-you note
+  } catch(e) {
+    const err = document.getElementById('fb-error');
+    err.textContent = 'Kunne ikke sende – prøv igjen.';
+    err.style.display = '';
+  }
 }
 
 document.addEventListener('visibilitychange', () => {
