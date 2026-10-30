@@ -808,14 +808,12 @@ async function buildDaglig() {
   else if (subTab === 'rapporter')  content = await buildDagligRapporter();
   else if (subTab === 'dagoppgjor') content = await buildDagoppgjor();
   else if (ST.role === 'admin') {
-    if      (subTab === 'import')    content = buildSalgImport();
-    else if (subTab === 'historikk') content = await buildSalgHistorikk();
+    if      (subTab === 'import')    content = await buildSalgImport();
     else if (subTab === 'mapping')   content = buildSalgMapping();
   }
 
   const adminSalgTabs = ST.role === 'admin' ? `
     <button class="${subTab==='import'?'active':''}"    onclick="ST.subTab.daglig='import';renderTab()">📥 Importer salg</button>
-    <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.daglig='historikk';renderTab()">📊 Historikk</button>
     <button class="${subTab==='mapping'?'active':''}"   onclick="ST.subTab.daglig='mapping';renderTab()">🔗 Produktmapping${unmappedCount > 0 ? ` <span style="background:#e65100;color:white;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:2px">${unmappedCount}</span>` : ''}</button>` : '';
 
   return `
@@ -2954,8 +2952,45 @@ async function deleteZReport(id) {
 // =============================================================
 //  SALG — IMPORT
 // =============================================================
-function buildSalgImport() {
+async function buildSalgImport() {
   const selDate = ST._salgDate || today();
+
+  // Fetch recent import dates with matched/unmatched counts
+  let recentRows = [];
+  try { recentRows = await sbGet('daily_sales?select=sale_date,units_sold,cafe_product_id&order=sale_date.desc&limit=5000'); } catch(e) {}
+
+  // Group by date
+  const byDate = {};
+  recentRows.forEach(r => {
+    if (!byDate[r.sale_date]) byDate[r.sale_date] = { units: 0, matched: 0, unmatched: 0 };
+    byDate[r.sale_date].units += r.units_sold;
+    if (r.cafe_product_id) byDate[r.sale_date].matched++;
+    else byDate[r.sale_date].unmatched++;
+  });
+  const dates = Object.keys(byDate).sort().reverse();
+
+  const recentHtml = dates.length === 0 ? '<div class="empty">Ingen importerte salg ennå.</div>' : dates.map(ds => {
+    const d = byDate[ds];
+    const isEditing = ST._salgDateEdit === ds;
+    const warn = d.unmatched > 0;
+    return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:120px">
+        <span style="font-weight:600">${fmtDate(ds)}</span>
+        <span style="font-size:0.8rem;color:var(--text2);margin-left:8px">${d.units} enheter</span>
+        ${warn ? `<span style="font-size:0.78rem;color:#A32D2D;margin-left:6px">⚠️ ${d.unmatched} umatchet</span>` : '<span style="font-size:0.78rem;color:#3B6D11;margin-left:6px">✓ Alle matchet</span>'}
+      </div>
+      ${isEditing ? `
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          ${mkDatePicker('salg-newdate', ds, "document.getElementById('salg-newdate-preview').textContent=fmtDate(this.value);", 'padding:4px 8px;font-size:0.88rem')}
+          <strong id="salg-newdate-preview" style="font-size:0.88rem;min-width:80px">${fmtDate(ds)}</strong>
+          <button class="btn btn-sm btn-primary" onclick="confirmChangeSalgDate('${ds}')">✓ Bekreft</button>
+          <button class="btn btn-sm" onclick="ST._salgDateEdit=null;renderTab()">Avbryt</button>
+        </div>` : `
+        <button class="btn btn-sm" onclick="ST._salgDateEdit='${ds}';renderTab()">📅 Endre dato</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteSalgDate('${ds}')">🗑️ Slett</button>`}
+    </div>`;
+  }).join('');
+
   return `
   <div class="card">
     <div class="card-header"><span class="card-title">Importer salg fra Excel (POS)</span></div>
@@ -2978,6 +3013,12 @@ function buildSalgImport() {
       <div style="font-size:12px;color:var(--text2);margin-top:4px">Støtter .xlsx og .xls</div>
     </div>
     ${ST._salgPreviewData ? buildSalgPreview() : ''}
+  </div>
+  <div class="card" style="margin-top:1rem">
+    <div class="card-header">
+      <span class="card-title">Importerte dager (${dates.length})</span>
+    </div>
+    ${recentHtml}
   </div>`;
 }
 
@@ -3252,9 +3293,9 @@ async function deleteAlias(id) {
 }
 
 async function buildSalgHistorikk() {
-  // Lightweight fetch — just dates and unit totals, no row limit
+  // Lightweight fetch — just dates and unit totals
   let allSales = [];
-  try { allSales = await sbGet('daily_sales?select=sale_date,units_sold,cafe_product_id&order=sale_date'); } catch(e) {}
+  try { allSales = await sbGet('daily_sales?select=sale_date,units_sold,cafe_product_id&order=sale_date&limit=5000'); } catch(e) {}
 
   // Aggregate by date: { 'YYYY-MM-DD': { units, matched, unmatched } }
   const byDate = {};
@@ -5950,7 +5991,7 @@ async function buildInnsikt() {
   // Fetch all data in parallel
   let sales = [], purchases = [], waste = [], privateOrders = [], prodLog = [], recipeRows = [];
   [sales, purchases, waste, privateOrders, prodLog, recipeRows] = await Promise.all([
-    sbGet(`daily_sales?select=*${dateFilter('sale_date')}`).catch(()=>[]),
+    sbGet(`daily_sales?select=*${dateFilter('sale_date')}&limit=5000&order=sale_date.asc`).catch(()=>[]),
     sbGet(`purchase_receipts?select=*,bestillinger_order_id,purchase_items(total_price,unit_price,quantity)${dateFilter('receipt_date')}`).catch(()=>[]),
     sbGet(`waste_log?select=*${dateFilter('log_date')}`).catch(()=>[]),
     sbGet(`private_orders?select=*,private_order_items(*)${dateFilter('order_date')}`).catch(()=>[]),
@@ -6493,7 +6534,16 @@ async function buildInnsikt() {
     const prod = ST.cafeProducts.find(p => p.id === selectedId);
     if (!prod) { ST._chartData = { mode:'produkt', ptLabels:[], ptProd:[], ptSold:[], ptWaste:[] }; return `${periodBar}${subNav}${prodSelector}<div class="empty">Produkt ikke funnet.</div>`; }
 
-    const pSales  = sales.filter(r => r.cafe_product_id===selectedId || r.product_name?.toLowerCase()===prod.name.toLowerCase());
+    // Build set of POS names that alias to this product (for matching historical rows without cafe_product_id)
+    const aliasNamesForProd = new Set(
+      ST.aliases.filter(a => a.cafe_product_id === selectedId && a.action !== 'ignore')
+               .map(a => a.pos_name.toLowerCase())
+    );
+    const stripSmia = s => s?.toLowerCase().replace(/^smia\s+/i, '') || '';
+    const pSales  = sales.filter(r => r.cafe_product_id===selectedId
+      || r.product_name?.toLowerCase()===prod.name.toLowerCase()
+      || (r.cafe_product_id==null && aliasNamesForProd.has(r.product_name?.toLowerCase()))
+      || (r.cafe_product_id==null && stripSmia(r.product_name)===prod.name.toLowerCase()));
     const pWaste  = waste.filter(r => r.cafe_product_id===selectedId);
     const pProdL  = prodLog.filter(r => r.cafe_product_id===selectedId);
 
@@ -7084,7 +7134,7 @@ async function printInnsiktRapport() {
   let sales = [], purchases = [], waste = [], privateOrders = [], prodLog = [], recipeRows = [];
   try {
     [sales, purchases, waste, privateOrders, prodLog, recipeRows] = await Promise.all([
-      sbGet(`daily_sales?select=*${dateFilter('sale_date')}`).catch(()=>[]),
+      sbGet(`daily_sales?select=*${dateFilter('sale_date')}&limit=5000&order=sale_date.asc`).catch(()=>[]),
       sbGet(`purchase_receipts?select=*,purchase_items(total_price,unit_price,quantity)${dateFilter('receipt_date')}`).catch(()=>[]),
       sbGet(`waste_log?select=*${dateFilter('log_date')}`).catch(()=>[]),
       sbGet(`private_orders?select=*,private_order_items(*)${dateFilter('order_date')}`).catch(()=>[]),
