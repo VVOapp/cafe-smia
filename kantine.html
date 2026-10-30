@@ -477,10 +477,45 @@ function recvWhen(r){
   return d.toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"short"})+' kl. '+d.toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"});
 }
 
+// The canteen's own "levert" ticks per line, stored in orders.checklist {key: ISO time}
+function canteenTick(o,l){const c=o.checklist||{};return Object.prototype.hasOwnProperty.call(c,l.key)?(c[l.key]||"x"):null;}
+function fmtTick(v){
+  if(!v||v==="x")return '';
+  const d=new Date(v);
+  return d.toLocaleDateString("nb-NO",{weekday:"short",day:"numeric",month:"short"})+(v.length>10?' kl. '+d.toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"}):'');
+}
+async function toggleCanteenTick(id,key){
+  const o=S.orders.find(function(x){return x.id===id;});if(!o)return;
+  const c=Object.assign({},o.checklist||{});
+  if(Object.prototype.hasOwnProperty.call(c,key))delete c[key];else c[key]=new Date().toISOString();
+  try{await db.updateOrder(id,{checklist:c});o.checklist=c;render();}
+  catch(e){showAlert("Kunne ikke lagre: "+e.message,"error");}
+}
+
 // Compact product list used on order cards.
-// withRecv: false = note column, true = received column, "staff" = received column with buttons per line
+// withRecv: false = note column, true = received column, "staff" = received column with buttons per line,
+// "canteen" = the canteen's own "Levert" tick per line, plus what the café has registered
 function linesTable(o,withRecv){
   const staff=withRecv==="staff";
+  if(withRecv==="canteen"){
+    let t='<table><thead><tr><th>Produkt</th><th>Dag</th><th>Antall</th><th>Levert</th></tr></thead><tbody>';
+    orderLines(o).forEach(function(l){
+      const p=getProd(l.pid);if(!p)return;
+      t+='<tr'+(l.rejected?' class="rejected-row"':'')+'><td style="font-weight:500">'+(l.first?p.name:'<span style="color:var(--text3)">↳</span>')+'</td><td class="item-note">'+l.day+'</td><td style="white-space:nowrap;font-weight:600">'+fmtQty(l.ordered)+'&nbsp;'+p.unit+'</td><td style="white-space:nowrap">';
+      if(l.rejected)t+='<span class="item-note">strøket</span>';
+      else{
+        const tick=canteenTick(o,l);
+        t+=tick
+          ?'<button class="btn btn-sm btn-green no-print" onclick="toggleCanteenTick('+o.id+',\''+l.key+'\')">&#x2713; Levert</button> <span class="item-note">'+fmtTick(tick)+'</span>'
+          :'<button class="btn btn-sm no-print" onclick="toggleCanteenTick('+o.id+',\''+l.key+'\')">&#x2610; Levert</button>';
+        const q=lineReceivedQty(o,l);
+        if(q!==null&&!isLinePartial(o,l))t+='<div class="item-note">Kaf\xe9en har hentet '+fmtQty(q)+'&nbsp;'+p.unit+'</div>';
+        else if(isLinePartial(o,l))t+='<div class="item-note">Kaf\xe9en har hentet '+fmtQty(q)+' av '+fmtQty(l.ordered)+'</div>';
+      }
+      t+='</td></tr>';
+    });
+    return t+'</tbody></table>';
+  }
   let html='<table><thead><tr><th>Produkt</th><th>Dag</th><th>Antall</th>'+(withRecv?'<th>Hentet</th>':'<th>Notat</th>')+'</tr></thead><tbody>';
   orderLines(o).forEach(function(l){
     const p=getProd(l.pid);if(!p)return;
@@ -488,9 +523,13 @@ function linesTable(o,withRecv){
     if(withRecv){
       const q=lineReceivedQty(o,l);
       if(l.rejected)html+='<td><span class="item-note">strøket</span></td>';
-      else if(q===null)html+='<td style="white-space:nowrap">'+(staff
-        ?'<button class="btn btn-sm btn-green no-print" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Hentet</button> <button class="btn btn-sm no-print" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Annet antall</button>'
-        :'<span style="color:var(--text3)">—</span>')+'</td>';
+      else if(q===null){
+        const tick=staff?canteenTick(o,l):null;
+        html+='<td style="white-space:nowrap">'+(staff
+          ?'<button class="btn btn-sm btn-green no-print" onclick="quickReceive('+o.id+',\''+l.key+'\')">&#x2713; Hentet</button> <button class="btn btn-sm no-print" onclick="openMottakLine('+o.id+',\''+l.key+'\')">Annet antall</button>'
+            +(tick?'<div class="item-note" style="color:#3B6D11">Kantinen: levert'+(fmtTick(tick)?' '+fmtTick(tick):'')+'</div>':'')
+          :'<span style="color:var(--text3)">—</span>')+'</td>';
+      }
       else if(isLinePartial(o,l)){
         const r=lineRecv(o,l);
         html+='<td style="white-space:nowrap">'+fmtQty(q)+' av '+fmtQty(l.ordered)+'&nbsp;'+p.unit+' hentet <span class="diff-badge over">resten kommer</span>';
@@ -540,10 +579,10 @@ function buildCanteen(){
       html+='<p class="section-label" style="margin-top:'+(toPrint.length>0?"1.5rem":"0")+'">Aktive bestillinger</p>';
       active.forEach(function(o){
         const lines=orderLines(o).filter(function(l){return !l.rejected;});
-        const done=lines.filter(function(l){return isLineDone(o,l);}).length;
+        const done=lines.filter(function(l){return !!canteenTick(o,l);}).length;
         html+='<div class="card">';
-        html+='<div class="card-header"><span class="card-title">'+weekLabel(o.week)+' <span style="font-weight:400;color:var(--text2)">(#'+o.id+')</span></span><span style="font-size:13px;color:var(--text2)">'+done+'/'+lines.length+' hentet</span><div class="spacer"></div><button class="btn btn-sm no-print" onclick="canteenPrint('+o.id+')">&#x1F5A8; Skriv ut igjen</button></div>';
-        html+=linesTable(o,true);
+        html+='<div class="card-header"><span class="card-title">'+weekLabel(o.week)+' <span style="font-weight:400;color:var(--text2)">(#'+o.id+')</span></span><span style="font-size:13px;color:var(--text2)">'+done+'/'+lines.length+' levert</span><div class="spacer"></div><button class="btn btn-sm no-print" onclick="canteenPrint('+o.id+')">&#x1F5A8; Skriv ut igjen</button></div>';
+        html+=linesTable(o,"canteen");
         if(o.note)html+='<p class="order-note">Notat fra kaf\xe9en: '+o.note+'</p>';
         html+='<div class="row" style="margin-top:10px;gap:6px"><input type="text" id="cnote-'+o.id+'" value="'+(o.canteen_note||'').replace(/"/g,"&quot;")+'" placeholder="Melding til kaf\xe9en (valgfritt), f.eks. «boller kommer tirsdag»" style="flex:1;font-size:13px"><button class="btn btn-sm" onclick="saveCanteenNote('+o.id+')">Lagre</button></div>';
         html+='</div>';
