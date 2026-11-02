@@ -160,9 +160,9 @@ body {
 .cs-open { background: #3B6D11; color: white; }
 .cs-done { background: var(--green-light); color: var(--green); border: 1px solid rgba(58,92,56,0.2); }
 .cs-wait { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
-.starter { margin-top: 10px; background: var(--bg); border: 1px dashed var(--accent-border); border-radius: 10px; padding: 10px 12px; }
-.starter-label { font-size: 11.5px; font-weight: 600; color: var(--text2); }
-.starter-text { font-size: 17px; font-weight: 700; margin: 4px 0 6px; }
+.starter { background: var(--accent-light); border: 2px solid var(--accent-border); border-radius: 12px; padding: 14px 16px; }
+.starter-label { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.starter-text { font-size: 20px; font-weight: 700; line-height: 1.3; margin: 0 0 10px; color: var(--text); }
 .starter-next { background: none; border: none; color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; }
 .yesno { display: flex; gap: 8px; }
 .yesno button { flex: 1; padding: 9px 0; font-size: 14px; font-weight: 700; background: var(--bg2); color: var(--text); border: 2px solid transparent; border-radius: 10px; cursor: pointer; }
@@ -506,23 +506,23 @@ async function loadCampaign() {
     const isDay = (c.weekdays || []).includes(new Date().getDay());
     let status;
     if (usedToday >= (c.max_per_day || 1)) status = `<div class="campaign-status cs-done">✅ Brukt i dag – velkommen tilbake!</div>`;
-    else if (isDay && now <= c.cutoff_time) status = `<div class="campaign-status cs-open">☕ Tilgjengelig nå – vis koden i kassen</div>`;
-    else status = `<div class="campaign-status cs-wait">Neste mulighet: ${escH(weekdayText(c.weekdays || []))} før kl. ${escH(c.cutoff_time)}</div>`;
+    else if (!isDay || now > c.cutoff_time) status = `<div class="campaign-status cs-wait">Neste mulighet: ${escH(weekdayText(c.weekdays || []))} før kl. ${escH(c.cutoff_time)}</div>`;
+    else status = '';
     const list = starterLists[c.id] = c.conversation_starters || [];
     if (isDay && list.length && !starters[c.id]) nextStarter(c.id);
-    const starter = isDay && list.length ? `
+    const starter = isDay && now <= c.cutoff_time && list.length ? `
       <div class="starter">
-        <div class="starter-label">💬 Samtalestarter – spør den som serverer deg:</div>
+        <div class="starter-label">💬 Spør den som serverer deg:</div>
         <div class="starter-text">${escH(starters[c.id])}</div>
         <button class="starter-next" onclick="nextStarter(${c.id});loadCampaign()">🔄 Et annet spørsmål</button>
       </div>` : '';
     return `
     <div class="campaign">
-      <div class="campaign-name">🎁 ${escH(c.name)}</div>
+      ${starter}
+      <div class="campaign-name" style="margin-top:${starter?'10px':'0'}">🎁 ${escH(c.name)}</div>
       ${c.description ? `<div class="campaign-desc">${escH(c.description)}</div>` : ''}
       <div class="campaign-when">Gratis drikke ${escH(weekdayText(c.weekdays || []))} før kl. ${escH(c.cutoff_time)}</div>
       ${status}
-      ${starter}
     </div>`;
   }).join('');
   if (html !== campaignKey) {
