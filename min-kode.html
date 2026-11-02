@@ -315,7 +315,7 @@ function showQR(id, displayPhone, showUpgrade) {
 
   const box = document.getElementById('qr-box');
   if (!box.querySelector('canvas,img')) {
-    new QRCode(box, { text: id, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(box, { text: 'https://vvoapp.github.io/cafe-smia/loyalty.html?id=' + encodeURIComponent(id), width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
   }
 
   const labelEl = document.getElementById('phone-label');
