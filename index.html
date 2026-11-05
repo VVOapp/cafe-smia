@@ -657,7 +657,7 @@
         </div>
       </div>
       <div class="form-group" id="end-time-wrap">
-        <label>Sluttidspunkt <span style="font-size:0.82rem;color:#888;font-weight:400">(valgfritt)</span></label>
+        <label>Sluttidspunkt <span class="req">*</span></label>
         <input type="time" id="delivery-end-time" style="max-width:180px">
         <p class="hint">Når er møtet / arrangementet ferdig? Hjelper oss med å planlegge opprydding.</p>
       </div>
@@ -964,6 +964,7 @@
     if (deliveryType === 'serveres' && !deliveryLocation)     { showError('Vennligst oppgi rom / sted for levering.'); return; }
     if (!deliveryDate)                                        { showError('Vennligst velg ønsket dato.'); return; }
     if (!deliveryTime)                                        { showError('Vennligst oppgi starttidspunkt.'); return; }
+    if (!deliveryEndTime)                                     { showError('Vennligst oppgi sluttidspunkt.'); return; }
 
 
     // Collect selected products (not needed for table bookings)
