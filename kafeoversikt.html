@@ -639,6 +639,7 @@ function getTabs(role) {
     { id: 'innkjop',    label: '🛒 Innkjøp' },
     { id: 'daglig',     label: '📋 Daglig' },
     { id: 'bestilling', label: '📑 Bestilling' },
+    { id: 'lojalitet',  label: '🧩 Quiz' },
   ];
 }
 
@@ -4981,10 +4982,13 @@ async function buildBestilling() {
 
   // Staff: simpler two-section nav
   if (ST.role !== 'admin') {
+    const bordBadgeStaff = ST._bordBadge > 0
+      ? ` <span style="background:#e53935;color:white;border-radius:10px;padding:1px 7px;font-size:0.72rem;font-weight:700;vertical-align:middle;margin-left:3px">${ST._bordBadge}</span>`
+      : '';
     return `
     <div class="sub-nav">
       <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">📋 Ordre</button>
-      <button class="${subTab==='bord'?'active':''}"      onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord</button>
+      <button class="${subTab==='bord'?'active':''}"      onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeStaff}</button>
       <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
     </div>
     ${subTab === 'bord' ? await buildBord() : await buildBestillingHistorikk()}`;
@@ -5176,13 +5180,70 @@ async function buildOrdreForesporsler() {
       : items.length > 0
         ? `<ul style="margin:6px 0 0 0;padding-left:18px;font-size:0.88rem;color:var(--text2)">${items.map(i=>`<li>${esc(i.name)}${i.qty>1?` × ${i.qty}`:''}</li>`).join('')}</ul>`
         : `<p style="font-size:0.88rem;color:#aaa;margin:4px 0 0">Ingen produkter valgt</p>`;
+    const isEditing = ST._editReqId === r.id;
+    const editFormHtml = isEditing ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;font-size:0.88rem">
+          <label style="display:flex;flex-direction:column;gap:3px">Faktureres til
+            <input id="er-invoice-to" class="form-control" value="${esc(r.invoice_to||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Kontaktperson
+            <input id="er-contact-name" class="form-control" value="${esc(r.contact_name||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">E-post
+            <input id="er-email" class="form-control" type="email" value="${esc(r.email||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Org.nr.
+            <input id="er-org-nr" class="form-control" value="${esc(r.org_nr||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Fakturaadresse
+            <input id="er-invoice-address" class="form-control" value="${esc(r.invoice_address||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Fakturareferanse
+            <input id="er-invoice-ref" class="form-control" value="${esc(r.invoice_ref||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Dato
+            <input id="er-date" class="form-control" type="date" value="${r.delivery_date||''}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Starttid
+            <input id="er-time" class="form-control" type="time" value="${r.delivery_time||''}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Sluttid
+            <input id="er-end-time" class="form-control" type="time" value="${r.delivery_end_time||''}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Sted / rom
+            <input id="er-location" class="form-control" value="${esc(r.delivery_location||'')}" style="font-size:0.88rem">
+          </label>
+          <label style="display:flex;flex-direction:column;gap:3px">Antall personer
+            <input id="er-num-people" class="form-control" type="number" min="1" value="${r.num_people||''}" style="font-size:0.88rem">
+          </label>
+        </div>
+        ${items.length > 0 ? `
+        <div style="margin-top:10px;font-size:0.88rem;font-weight:600">Produkter</div>
+        <div id="er-items" style="margin-top:4px;display:flex;flex-direction:column;gap:4px">
+          ${items.map((it,idx)=>`
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="number" min="1" value="${it.qty||1}" id="er-item-qty-${idx}" style="width:60px;font-size:0.88rem" class="form-control">
+            <span style="font-size:0.88rem">${esc(it.name)}</span>
+          </div>`).join('')}
+        </div>` : ''}
+        <label style="display:flex;flex-direction:column;gap:3px;margin-top:10px;font-size:0.88rem">Notat
+          <textarea id="er-note" class="form-control" rows="2" style="font-size:0.88rem">${esc(r.note||'')}</textarea>
+        </label>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" onclick="saveEditRequest(${r.id},${JSON.stringify(items).replace(/"/g,'&quot;')})">💾 Lagre endringer</button>
+          <button class="btn btn-sm" onclick="ST._editReqId=null;renderTab()">Avbryt</button>
+        </div>
+      </div>` : '';
     const actionsHtml = `
+      ${editFormHtml}
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
         ${showActions && isTable ? `
         <button class="btn btn-primary btn-sm" onclick="ST.tab='bestilling';ST.subTab.bestilling='bord';renderTab()">🪑 Håndter i Bord-fanen</button>
         ` : showActions && !isTable ? `
         <button class="btn btn-primary btn-sm" onclick="confirmRequest(${r.id},'${esc(r.email||'')}','${esc(r.contact_name||r.invoice_to||'')}','${esc(r.invoice_to||'')}')">✅ Bekreft, opprett ordre & send e-post</button>
         <button class="btn btn-sm" style="border-color:#e53935;color:#e53935" onclick="dismissRequest(${r.id},'${esc(r.email||'')}','${esc(r.contact_name||r.invoice_to||'')}')">❌ Avslå & send e-post</button>
+        ${!isEditing ? `<button class="btn btn-sm" onclick="ST._editReqId=${r.id};renderTab()">✏️ Rediger</button>` : ''}
         ` : !showActions && r.status === 'confirmed' && !isTable ? `
         <button class="btn btn-sm" style="border-color:#1976d2;color:#1976d2" onclick="reopenConfirmedRequest(${r.id},'${esc(r.email||'')}','${esc(r.contact_name||r.invoice_to||'')}','${esc(r.invoice_to||'')}')">📋 Opprett ordre</button>
         ` : ''}
@@ -5378,6 +5439,36 @@ async function deleteRequest(id) {
   try {
     await sbDelete(`order_requests?id=eq.${id}`);
     showAlert('Forespørsel slettet.');
+    renderTab();
+  } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
+}
+
+async function saveEditRequest(id, originalItems) {
+  const v = f => document.getElementById(f)?.value?.trim() || null;
+  const srcItems = typeof originalItems === 'string' ? JSON.parse(originalItems) : (originalItems || []);
+  const items = srcItems.map((it, i) => ({
+    ...it,
+    qty: parseInt(document.getElementById(`er-item-qty-${i}`)?.value) || it.qty || 1
+  }));
+  const patch = {
+    invoice_to:       v('er-invoice-to'),
+    contact_name:     v('er-contact-name'),
+    email:            v('er-email'),
+    org_nr:           v('er-org-nr'),
+    invoice_address:  v('er-invoice-address'),
+    invoice_ref:      v('er-invoice-ref'),
+    delivery_date:    v('er-date'),
+    delivery_time:    v('er-time'),
+    delivery_end_time: v('er-end-time'),
+    delivery_location: v('er-location'),
+    num_people:       parseInt(document.getElementById('er-num-people')?.value) || null,
+    note:             v('er-note'),
+    ...(items.length > 0 ? { items } : {}),
+  };
+  try {
+    await sbPatch(`order_requests?id=eq.${id}`, patch);
+    ST._editReqId = null;
+    showAlert('Forespørsel oppdatert.');
     renderTab();
   } catch(e) { showAlert('Feil: ' + e.message, 'error'); }
 }
