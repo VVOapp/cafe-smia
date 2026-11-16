@@ -8683,6 +8683,7 @@ function buildUkensQuizTab() {
       <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
         <input type="text" value="${esc(q.codeword)}" style="text-transform:uppercase;font-weight:700;letter-spacing:0.08em;max-width:220px"
           onchange="updateQuizCodeword(this.value)">
+        <button class="btn btn-sm" onclick="suggestLøsningsord()" title="Foreslå et norsk ord knyttet til Vennesla">🎲 Foreslå ord</button>
         <button class="btn btn-sm btn-secondary" onclick="autoGenerateQuizClues()" title="Generer ledetekster automatisk fra ordboken">✨ Auto-generer ledetekster</button>
         <button class="btn btn-sm" onclick="clearQuizHistory()" title="Nullstill historikk — alle spørsmål blir tilgjengelige igjen" style="font-size:11px;color:var(--text2)">🗑️ Nullstill historikk</button>
       </div>
@@ -8930,6 +8931,92 @@ const QUIZ_ORDBANK = [
   { clue: 'Navigasjonsredskap som viser retning med en nål mot nord', answer: 'KOMPASS' },
   { clue: 'Instrument som måler lufttrykk og varsler vær',            answer: 'BAROMETER' },
   { clue: 'Instrument som måler temperatur i grader',                 answer: 'TERMOMETER' },
+
+  // Mat og drikke
+  { clue: 'Norsk frokostfat laget av havre kokt i vann eller melk',   answer: 'GRØT' },
+  { clue: 'Norsk julekake bakt av pepperkakedeig i mange former',      answer: 'PEPPERKAKE' },
+  { clue: 'Fermentert melkedrikk som er hvit og syrlig',               answer: 'KULTURMELK' },
+  { clue: 'Norsk tradisjonell spekemat av lammekjøtt fra fjellet',     answer: 'FENALÅR' },
+  { clue: 'Søt brun masse laget av kokt melk og sukker',               answer: 'KARAMELL' },
+  { clue: 'Kald drikk laget av pressede sitroner og sukker',           answer: 'LIMONADE' },
+  { clue: 'Italiensk isrett servert i kule- eller blokkform',          answer: 'ISKREM' },
+  { clue: 'Fransk bakverk med mange lag smørdeig, ofte servert til frokost', answer: 'CROISSANT' },
+  { clue: 'Norsk type flatbrød bakt på takke, tradisjonelt til jul',   answer: 'LEFSE' },
+  { clue: 'Svart bær som vokser i norsk natur, brukes til syltetøy',   answer: 'BLÅBÆR' },
+  { clue: 'Rød frukt som vokser på busker, populær i norske hager',    answer: 'JORDBÆR' },
+  { clue: 'Norsk hvit ost laget av geitemelk med søtlig smak',        answer: 'BRUNOST' },
+  { clue: 'Varm drikk laget av kaffebønner, Norges mest populære',     answer: 'KAFFE' },
+  { clue: 'Varm drikk laget av te-blader og vann',                     answer: 'TE' },
+  { clue: 'Søtt pålegg laget av honning og sukker i bikuber',          answer: 'HONNING' },
+
+  // Kropp og helse
+  { clue: 'Det organet som pumper blod rundt i kroppen',               answer: 'HJERTE' },
+  { clue: 'Kroppsdel som sitter mellom hals og hodet og inneholder hjernen', answer: 'HODE' },
+  { clue: 'Kroppsdel vi bruker til å høre med',                        answer: 'ØRE' },
+  { clue: 'Kroppsdel vi bruker til å se med',                          answer: 'ØYE' },
+  { clue: 'Den største muskelen i menneskekroppen, sitter bak på låret', answer: 'LÅRMUSKEL' },
+  { clue: 'Ryggradens beskyttende bur rundt lungene',                  answer: 'RIBBEIN' },
+  { clue: 'Organ i magen som renser blodet',                           answer: 'NYRE' },
+
+  // Natur og planter
+  { clue: 'Norsk plante med gule blomster som lyser langs veiene om sommeren', answer: 'RAPS' },
+  { clue: 'Lilla blomst som vokser i norsk lyng om høsten',            answer: 'LYNG' },
+  { clue: 'Vanlig norsk treslag med hvit bark og gule høstblader',     answer: 'BJØRK' },
+  { clue: 'Norsk treslag med nåler, harpiks og kongler, typisk i skoger', answer: 'FURU' },
+  { clue: 'Europeisk treslag som taper bladene om høsten, brukes til møbler', answer: 'EIK' },
+  { clue: 'Rød bærgivende plante i norsk skog med giftige bær',        answer: 'BRINGEBÆR' },
+  { clue: 'Blomst som spirer av løk og kommer om våren i gult, lilla eller rødt', answer: 'TULIPAN' },
+  { clue: 'Stor blomst med gulbrunt hode som følger solen',             answer: 'SOLSIKKE' },
+  { clue: 'Vann som beveger seg raskt nedover et stup i naturen',       answer: 'FOSS' },
+  { clue: 'Stor saltvannsforekomst som dekker mesteparten av jordkloden', answer: 'HAV' },
+
+  // Norsk samfunn og politikk
+  { clue: 'Norges regjerende monark siden 1991',                       answer: 'HARALD' },
+  { clue: 'Norges nasjonaldag feires hvert år denne datoen i mai',     answer: 'SYTTENDE' },
+  { clue: 'Norges nasjonalsang, skrevet av Bjørnson',                  answer: 'JA VI ELSKER' },
+  { clue: 'Det øverste lovgivende organ i Norge',                      answer: 'STORTINGET' },
+  { clue: 'Norges statskirke, der mange gifter seg og begraves',       answer: 'KIRKE' },
+  { clue: 'Norsk offentlig TV-kanal, grunnlagt i 1960',                answer: 'NRK' },
+  { clue: 'Norsk statlig pensjons- og trygdefond, verdens største',    answer: 'OLJEFONDET' },
+  { clue: 'Norsk valuta brukt i dagliglivet',                          answer: 'KRONE' },
+  { clue: 'Norsk nødetat som slukker branner og redder folk',          answer: 'BRANNVESEN' },
+  { clue: 'Den norske statens viktigste råvare siden 1969 fra Nordsjøen', answer: 'OLJE' },
+
+  // Verden og verdenshistorie (tillegg)
+  { clue: 'Leder av den amerikanske uavhengighetserklæringen i 1776',  answer: 'JEFFERSON' },
+  { clue: 'Første mann til å seile jorda rundt, portugisisk sjøfarer', answer: 'MAGELLAN' },
+  { clue: 'Romersk keiser kjent for å ha brent Roma og forfulgt kristne', answer: 'NERO' },
+  { clue: 'Gresk filosof og lærer for Aleksander den store',           answer: 'ARISTOTELES' },
+  { clue: 'Gresk filosof som stilte spørsmål og drakk skarntydegift', answer: 'SOKRATES' },
+  { clue: 'Matematiker som beregnet jordens omkrets i antikken',       answer: 'ERATOSTENES' },
+  { clue: 'Verdens første land til å gi kvinner stemmerett, i 1893',   answer: 'NEW ZEALAND' },
+  { clue: 'Europeisk mur som falt i november 1989',                    answer: 'BERLIN' },
+  { clue: 'Kontinent der Amazon-elven og regnskogen finnes',           answer: 'SØRAMERIKA' },
+  { clue: 'Europeisk by kjent for sin tårn som ble bygget i 1889',     answer: 'PARIS' },
+  { clue: 'Verdens minste stat, omgitt av Roma',                       answer: 'VATIKANET' },
+  { clue: 'Øst-asiatisk land kjent for kirsebærblomster og Mount Fuji', answer: 'JAPAN' },
+  { clue: 'Afrikansk land med pyramider og sfinxen ved Nilen',         answer: 'EGYPT' },
+  { clue: 'Land der flamenco-dans og tyrefekting er tradisjon',        answer: 'SPANIA' },
+  { clue: 'Skandinavisk naboland med Stockholm som hovedstad',         answer: 'SVERIGE' },
+  { clue: 'Skandinavisk naboland med København som hovedstad',         answer: 'DANMARK' },
+  { clue: 'Europeisk land kjent for tulipaner, vindmøller og kanaler', answer: 'NEDERLAND' },
+  { clue: 'Land der Taj Mahal og Ganges-elven finnes',                 answer: 'INDIA' },
+  { clue: 'Land der gangstadansen tango opprinnelig kommer fra',       answer: 'ARGENTINA' },
+  { clue: 'Den kinesiske mur strekker seg gjennom dette landet',       answer: 'KINA' },
+
+  // Teknologi og vitenskap
+  { clue: 'Apparat som sender og mottar trådløse lydmeldinger og musikk', answer: 'RADIO' },
+  { clue: 'Skjerm som viser levende bilder og lyd hjemme i stuen',    answer: 'TV' },
+  { clue: 'Globalt datanettverk vi bruker daglig for informasjon',     answer: 'INTERNETT' },
+  { clue: 'Liten datamaskin folk bærer i lommen og ringer med',        answer: 'MOBILTELEFON' },
+  { clue: 'Fartøy som flyr gjennom luften med passasjerer',            answer: 'FLY' },
+  { clue: 'Kjøretøy som kjører på skinner og frakter passasjerer',    answer: 'TOG' },
+  { clue: 'Apparat som kjøler ned mat og drikke i kjøkkenet',          answer: 'KJØLESKAP' },
+  { clue: 'Maskin som vasker klær med vann og såpe',                   answer: 'VASKEMASKIN' },
+  { clue: 'Verktøy som limer papir og materialer sammen med varme',    answer: 'LIMPISOL' },
+  { clue: 'Optisk instrument som gjør fjerne ting store og synlige',   answer: 'TELESKOP' },
+  { clue: 'Apparat som forstørrer meget små gjenstander og celler',    answer: 'MIKROSKOP' },
+  { clue: 'Kraft fra vann i bevegelse brukt til å lage strøm',         answer: 'VANNKRAFT' },
 ];
 
 // ── Quiz answer history (persisted in localStorage) ──────────────────────────
@@ -8950,6 +9037,28 @@ function addToQuizHistory(answers) {
 function clearQuizHistory() {
   localStorage.removeItem(QUIZ_HISTORY_KEY);
   showAlert('Quizhistorikk nullstilt — alle spørsmål er tilgjengelige igjen');
+}
+
+const VENNESLA_ORD = [
+  'VENNESLA','OTRA','HUNSFOSS','KVARSTEIN','HÆGELAND','LANGELAND','TVEIT',
+  'ØVREBØ','NODELAND','MOSBY','STRAI','VIKELAND','DRANGSHOLT','SKARPENGLAND',
+  'FENNEFOSS','BJØRNDALSFJELLET','VÅGSBYGD','SØGNE','SONGDALEN','VEST-AGDER',
+  'AGDER','KRISTIANSAND','SETESDALSBANEN','AUST-AGDER','LISTERFJORD',
+  'MANDAL','FARSUND','KJEVIK','SØRLANDSPORTEN','IKEA','KVADRAT',
+  'SETESDAL','BYKLEFJELL','REIARFJELL','STAMPEFOSS','SAMSFOSS',
+  'SKARPENGLAND','HÆGESTADMOEN','FLEKKERØY','KJERRINGVIK','RANDESUND',
+  'HØVÅG','LILLESAND','BIRKENES','IVELAND','EVJE',
+];
+
+function suggestLøsningsord() {
+  const history = getQuizHistory();
+  const unused = VENNESLA_ORD.filter(w => !history.has(w));
+  const pool = unused.length > 0 ? unused : VENNESLA_ORD;
+  const word = pool[Math.floor(Math.random() * pool.length)];
+  updateQuizCodeword(word);
+  document.querySelector('input[onchange*="updateQuizCodeword"]').value = word;
+  showAlert(`Forslag: ${word} — rediger om du vil, klikk deretter «Auto-generer ledetekster»`);
+  renderTab();
 }
 
 // Shared candidate-filter used by both full regen and single-row regen
