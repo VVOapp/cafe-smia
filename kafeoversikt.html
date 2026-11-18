@@ -5012,8 +5012,10 @@ async function buildBordplan() {
   ST._bpSelected = ST._bpSelected || [];
   ST._bpMoveMode = ST._bpMoveMode || false;
 
+  const dateStr   = ST._bpDate;
+
   // Reload layout when date changes (date-specific overrides differ per day)
-  if (!ST._bpLayout || ST._bpLayoutDate !== ST._bpDate) {
+  if (!ST._bpLayout || ST._bpLayoutDate !== dateStr) {
     try {
       const baseRows = await sbGet('bordplan_layout?order=sort_order');
       const base = baseRows.length > 0
@@ -5031,8 +5033,6 @@ async function buildBordplan() {
     }
     ST._bpLayoutDate = dateStr;
   }
-
-  const dateStr   = ST._bpDate;
   const jsDay     = new Date(dateStr + 'T12:00:00').getDay();
   const isoWkday  = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon…6=Sun
 
