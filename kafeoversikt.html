@@ -4999,6 +4999,12 @@ const BP_DEFAULT_LAYOUT = [
   { id:'B6',  label:'',    x:558, y:375, w:15, h:50, is_bench:true,  sort_order:21 },
   { id:'T16', label:'T16', x:410, y:435, w:65, h:50, is_bench:false, sort_order:22 },
   { id:'T17', label:'T17', x:485, y:435, w:65, h:50, is_bench:false, sort_order:23 },
+  // Extra tables – left side lower cluster
+  { id:'T18', label:'T18', x:30,  y:285, w:65, h:50, is_bench:false, sort_order:24 },
+  { id:'T19', label:'T19', x:105, y:285, w:65, h:50, is_bench:false, sort_order:25 },
+  // Extra tables – right bottom 5th row
+  { id:'T20', label:'T20', x:410, y:498, w:65, h:50, is_bench:false, sort_order:26 },
+  { id:'T21', label:'T21', x:485, y:498, w:65, h:50, is_bench:false, sort_order:27 },
 ];
 
 async function buildBordplan() {
@@ -5127,13 +5133,18 @@ async function buildBordplan() {
              <button class="btn btn-sm" onclick="ST._bpSelected=[];renderTab()">✕</button>`
           : ''}
         <button class="btn btn-sm${ST._bpMoveMode?' active':''}" onclick="ST._bpMoveMode=!ST._bpMoveMode;ST._bpSelected=[];renderTab()">${ST._bpMoveMode?'✅ Flytt modus':'🔀 Flytt bord'}</button>
-        ${ST._bpMoveMode ? `<button class="btn btn-sm" onclick="saveBpLayout(true)">💾 Lagre layout</button>` : ''}
+        ${ST._bpMoveMode ? `
+          <button class="btn btn-sm" onclick="addBpTable()">➕ Bord</button>
+          <button class="btn btn-sm" onclick="addBpBench()">➕ Benk</button>
+          ${ST._bpSelected.length === 1 ? `<button class="btn btn-sm" style="color:#c62828" onclick="deleteBpTable('${ST._bpSelected[0]}')">🗑️ Slett</button>` : ''}
+          <button class="btn btn-sm" onclick="saveBpLayout(true)">💾 Lagre layout</button>
+        ` : ''}
       </span>
     </div>
 
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
       <div style="flex:0 0 auto">
-        <div id="bp-canvas" style="position:relative;width:590px;height:510px;background:#f5f0eb;border:1px solid #bbb;border-radius:6px;overflow:hidden;touch-action:none">
+        <div id="bp-canvas" style="position:relative;width:590px;height:580px;background:#f5f0eb;border:1px solid #bbb;border-radius:6px;overflow:hidden;touch-action:none">
           <div style="position:absolute;left:390px;top:197px;width:195px;border-top:2px dashed #a1887f;text-align:center;font-size:10px;font-weight:600;color:#8d6e63;letter-spacing:1px;padding-top:3px">↑ INNGANGEN ↑</div>
           ${tableEls}
         </div>
@@ -5220,6 +5231,23 @@ function initBordplan() {
     else ST._bpSelected.push(id);
     renderTab();
   });
+
+  // Double-click to rename (move mode only)
+  canvas.addEventListener('dblclick', e => {
+    if (!ST._bpMoveMode) return;
+    const el = e.target.closest('.bp-table');
+    if (!el) return;
+    const id = el.dataset.id;
+    const tbl = (ST._bpLayout || []).find(t => t.id === id);
+    if (!tbl) return;
+    const newLabel = prompt('Nytt navn for bordet:', tbl.label);
+    if (newLabel && newLabel.trim()) {
+      tbl.label = newLabel.trim();
+      const span = el.querySelector('span');
+      if (span) span.textContent = tbl.label;
+      saveBpLayout(false);
+    }
+  });
 }
 
 function bpSnapTable(id) {
@@ -5261,6 +5289,45 @@ async function saveBpLayout(showMsg) {
     if (showMsg) showAlert('Feil ved lagring av layout: ' + e.message, 'error');
     console.error(e);
   }
+}
+
+async function addBpTable() {
+  const layout = ST._bpLayout || [];
+  const usedNums = layout.filter(t => !t.is_bench && /^T\d+$/.test(t.label)).map(t => parseInt(t.label.slice(1)));
+  let n = 1;
+  while (usedNums.includes(n)) n++;
+  const newT = { id: 'T' + n + '_' + Date.now(), label: 'T' + n, x: 20, y: 20, w: 65, h: 50, is_bench: false, sort_order: layout.length + 1 };
+  ST._bpLayout.push(newT);
+  try {
+    await sbFetch('bordplan_layout?on_conflict=table_id', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: [newT],
+    });
+  } catch(e) { console.error(e); }
+  renderTab();
+}
+
+async function addBpBench() {
+  const layout = ST._bpLayout || [];
+  const newB = { id: 'bench_' + Date.now(), label: '', x: 20, y: 20, w: 120, h: 15, is_bench: true, sort_order: layout.length + 1 };
+  ST._bpLayout.push(newB);
+  try {
+    await sbFetch('bordplan_layout?on_conflict=table_id', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: [newB],
+    });
+  } catch(e) { console.error(e); }
+  renderTab();
+}
+
+async function deleteBpTable(id) {
+  if (!confirm('Slett dette bordet fra planen?\n(Eksisterende bookinger for bordet slettes ikke.)')) return;
+  ST._bpLayout  = (ST._bpLayout  || []).filter(t => t.id !== id);
+  ST._bpSelected = (ST._bpSelected || []).filter(x => x !== id);
+  try { await sbDelete('bordplan_layout?table_id=eq.' + id); } catch(e) { console.error(e); }
+  renderTab();
 }
 
 function openBpBookingModal(tableIds, dateStr, existingId) {
