@@ -5185,6 +5185,18 @@ function initBordplan() {
   const canvas = document.getElementById('bp-canvas');
   if (!canvas) return;
 
+  // Auto-refresh: update colours as time passes and pick up new bookings
+  if (ST._bpTimer) clearInterval(ST._bpTimer);
+  ST._bpTimer = setInterval(() => {
+    if (ST.tab === 'bestilling' && ST.subTab.bestilling === 'bordplan') {
+      ST._bpBookings = null; // force reload from Supabase
+      renderTab();
+    } else {
+      clearInterval(ST._bpTimer);
+      ST._bpTimer = null;
+    }
+  }, 60000);
+
   let dragging = null, dragOffX = 0, dragOffY = 0, startX = 0, startY = 0, hasMoved = false;
 
   canvas.addEventListener('pointerdown', e => {
