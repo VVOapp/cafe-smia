@@ -746,6 +746,7 @@ async function renderTab() {
     }
     bindTabEvents();
     if (ST.tab === 'innsikt' || (ST.tab === 'innkjop' && ST.subTab.innkjop === 'prishistorikk')) initCharts();
+    if (ST.tab === 'bestilling' && ST.subTab.bestilling === 'bordplan') initBordplan();
   } catch(e) {
     c.innerHTML = `<div class="alert alert-error">Feil: ${esc(e.message)}</div>`;
     console.error(e);
@@ -4967,6 +4968,424 @@ async function finaliseBordOrder(requestId) {
 }
 
 // =============================================================
+//  BORDPLAN (interactive floor plan + daily booking system)
+// =============================================================
+
+const BP_DEFAULT_LAYOUT = [
+  // Left cluster – top row
+  { id:'T1',  label:'T1',  x:30,  y:30,  w:65, h:50, is_bench:false, sort_order:1  },
+  { id:'T2',  label:'T2',  x:105, y:30,  w:65, h:50, is_bench:false, sort_order:2  },
+  { id:'T3',  label:'T3',  x:180, y:30,  w:65, h:50, is_bench:false, sort_order:3  },
+  { id:'B1',  label:'',    x:30,  y:88,  w:215,h:15, is_bench:true,  sort_order:4  },
+  // Left cluster – bottom
+  { id:'T4',  label:'T4',  x:30,  y:155, w:60, h:50, is_bench:false, sort_order:5  },
+  { id:'T5',  label:'T5',  x:100, y:155, w:60, h:50, is_bench:false, sort_order:6  },
+  { id:'B2',  label:'',    x:30,  y:213, w:130,h:15, is_bench:true,  sort_order:7  },
+  // Right cluster – above entrance
+  { id:'T6',  label:'T6',  x:410, y:30,  w:65, h:50, is_bench:false, sort_order:8  },
+  { id:'T7',  label:'T7',  x:485, y:30,  w:65, h:50, is_bench:false, sort_order:9  },
+  { id:'B3',  label:'',    x:558, y:30,  w:15, h:50, is_bench:true,  sort_order:10 },
+  { id:'T8',  label:'T8',  x:410, y:90,  w:65, h:50, is_bench:false, sort_order:11 },
+  { id:'T9',  label:'T9',  x:485, y:90,  w:65, h:50, is_bench:false, sort_order:12 },
+  { id:'B4',  label:'',    x:558, y:90,  w:15, h:50, is_bench:true,  sort_order:13 },
+  // Right cluster – below entrance
+  { id:'T10', label:'T10', x:410, y:255, w:65, h:50, is_bench:false, sort_order:14 },
+  { id:'T11', label:'T11', x:485, y:255, w:65, h:50, is_bench:false, sort_order:15 },
+  { id:'B5',  label:'',    x:558, y:255, w:15, h:50, is_bench:true,  sort_order:16 },
+  { id:'T12', label:'T12', x:410, y:315, w:65, h:50, is_bench:false, sort_order:17 },
+  { id:'T13', label:'T13', x:485, y:315, w:65, h:50, is_bench:false, sort_order:18 },
+  { id:'T14', label:'T14', x:410, y:375, w:65, h:50, is_bench:false, sort_order:19 },
+  { id:'T15', label:'T15', x:485, y:375, w:65, h:50, is_bench:false, sort_order:20 },
+  { id:'B6',  label:'',    x:558, y:375, w:15, h:50, is_bench:true,  sort_order:21 },
+  { id:'T16', label:'T16', x:410, y:435, w:65, h:50, is_bench:false, sort_order:22 },
+  { id:'T17', label:'T17', x:485, y:435, w:65, h:50, is_bench:false, sort_order:23 },
+];
+
+async function buildBordplan() {
+  ST._bpDate     = ST._bpDate     || new Date().toISOString().slice(0, 10);
+  ST._bpSelected = ST._bpSelected || [];
+  ST._bpMoveMode = ST._bpMoveMode || false;
+
+  if (!ST._bpLayout) {
+    try {
+      const rows = await sbGet('bordplan_layout?order=sort_order');
+      ST._bpLayout = rows.length > 0 ? rows : BP_DEFAULT_LAYOUT.map(t => ({...t}));
+    } catch(e) {
+      ST._bpLayout = BP_DEFAULT_LAYOUT.map(t => ({...t}));
+    }
+  }
+
+  const dateStr   = ST._bpDate;
+  const jsDay     = new Date(dateStr + 'T12:00:00').getDay();
+  const isoWkday  = jsDay === 0 ? 6 : jsDay - 1; // 0=Mon…6=Sun
+
+  let bookings = [];
+  if (ST._bpBookings === null || ST._bpBookings === undefined) {
+    try {
+      const [specific, recurring] = await Promise.all([
+        sbGet(`bordplan_bookings?booking_date=eq.${dateStr}&order=start_time`),
+        sbGet(`bordplan_bookings?recurring_weekly=eq.true&recurring_weekday=eq.${isoWkday}&booking_date=is.null&order=start_time`),
+      ]);
+      bookings = [...specific, ...recurring];
+    } catch(e) {}
+    ST._bpBookings = bookings;
+  } else {
+    bookings = ST._bpBookings;
+  }
+
+  const now     = new Date();
+  const nowStr  = now.toTimeString().slice(0, 5);
+  const isToday = dateStr === now.toISOString().slice(0, 10);
+  const layout  = ST._bpLayout;
+
+  // Map table_id → bookings
+  const tblBks = {};
+  bookings.forEach(b => {
+    const ids = Array.isArray(b.table_ids) ? b.table_ids : JSON.parse(b.table_ids || '[]');
+    ids.forEach(tid => { (tblBks[tid] = tblBks[tid] || []).push(b); });
+  });
+
+  const statusStyle = {
+    free:     'background:#e8f5e9;border:2px solid #43a047;color:#1b5e20',
+    booked:   'background:#fff8e1;border:2px solid #fb8c00;color:#e65100',
+    busy:     'background:#ffebee;border:2px solid #e53935;color:#b71c1c',
+    selected: 'background:#bbdefb;border:2px solid #1565c0;color:#0d47a1',
+    bench:    'background:#d7ccc8;border:2px solid #8d6e63',
+  };
+
+  function tableStatus(tid) {
+    if (ST._bpSelected.includes(tid)) return 'selected';
+    const bks = tblBks[tid] || [];
+    if (!bks.length) return 'free';
+    if (isToday && bks.some(b => {
+      const s = (b.start_time || '00:00').slice(0, 5);
+      const e = (b.end_time   || '23:59').slice(0, 5);
+      return nowStr >= s && nowStr <= e;
+    })) return 'busy';
+    return 'booked';
+  }
+
+  const tableEls = layout.map(t => {
+    if (t.is_bench) {
+      return `<div class="bp-bench" data-id="${t.id}" style="position:absolute;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${statusStyle.bench};border-radius:3px;box-sizing:border-box;cursor:${ST._bpMoveMode?'grab':'default'};touch-action:none;user-select:none" title="Benk"></div>`;
+    }
+    const st  = tableStatus(t.id);
+    const bks = tblBks[t.id] || [];
+    return `<div class="bp-table" data-id="${t.id}" style="position:absolute;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${statusStyle[st]};border-radius:5px;cursor:${ST._bpMoveMode?'grab':'pointer'};box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:600;touch-action:none;user-select:none" title="${bks.length?bks.map(b=>(b.start_time||'').slice(0,5)+(b.name?' '+b.name:'')).join(', '):'Ledig'}">
+      <span>${esc(t.label)}</span>
+      ${bks.length ? `<span style="font-size:9px;font-weight:400">${bks.length} bk.</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const selCount = ST._bpSelected.length;
+
+  // Date helpers
+  const shiftDate = (d, n) => { const dt = new Date(d + 'T12:00:00'); dt.setDate(dt.getDate() + n); return dt.toISOString().slice(0,10); };
+  const fmtLong = d => {
+    const days   = ['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
+    const months = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des'];
+    const dt = new Date(d + 'T12:00:00');
+    return `${days[dt.getDay()]} ${dt.getDate()}. ${months[dt.getMonth()]}`;
+  };
+
+  const bookingRows = bookings.length === 0
+    ? `<div style="color:#888;font-size:0.85rem;padding:8px 0">Ingen bookinger</div>`
+    : [...bookings].sort((a,b) => (a.start_time||'').localeCompare(b.start_time||'')).map(b => {
+        const ids = Array.isArray(b.table_ids) ? b.table_ids : JSON.parse(b.table_ids || '[]');
+        const tLabels = ids.map(id => layout.find(t => t.id === id)?.label || id).join(', ');
+        const idsJson = JSON.stringify(ids).replace(/"/g,'&quot;');
+        return `<div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:0.82rem">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
+            <div>
+              <strong>${(b.start_time||'?').slice(0,5)}${b.end_time?' – '+(b.end_time).slice(0,5):''}</strong>
+              ${b.recurring_weekly?'<span style="background:#ede7f6;color:#4527a0;border-radius:10px;padding:1px 5px;font-size:0.7rem;margin-left:4px">↻</span>':''}
+              <span style="margin-left:5px">${esc(b.name||'')}</span>
+              ${b.pax?`<span style="color:#888;margin-left:3px">(${b.pax} p.)</span>`:''}
+            </div>
+            <div style="display:flex;gap:3px;flex-shrink:0">
+              <button class="btn btn-sm" onclick="openBpBookingModal(${idsJson},'${dateStr}','${b.id}')">✏️</button>
+              <button class="btn btn-sm" style="color:#c62828" onclick="deleteBpBooking('${b.id}',${!!b.recurring_weekly})">🗑</button>
+            </div>
+          </div>
+          <div style="color:#666;margin-top:2px">🪑 ${esc(tLabels)}${b.note?' · '+esc(b.note):''}</div>
+        </div>`;
+      }).join('');
+
+  const selJson = JSON.stringify(ST._bpSelected).replace(/"/g,'&quot;');
+
+  return `
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,-1)}';ST._bpBookings=null;ST._bpSelected=[];renderTab()">◀</button>
+      <strong style="min-width:170px;text-align:center">${fmtLong(dateStr)}</strong>
+      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,1)}';ST._bpBookings=null;ST._bpSelected=[];renderTab()">▶</button>
+      <button class="btn btn-sm" onclick="ST._bpDate=new Date().toISOString().slice(0,10);ST._bpBookings=null;ST._bpSelected=[];renderTab()">I dag</button>
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${selCount > 0
+          ? `<span style="color:#1565c0;font-weight:600">${selCount} bord valgt</span>
+             <button class="btn btn-primary btn-sm" onclick="openBpBookingModal(${selJson},'${dateStr}',null)">📅 Book valgte</button>
+             <button class="btn btn-sm" onclick="ST._bpSelected=[];renderTab()">✕</button>`
+          : ''}
+        <button class="btn btn-sm${ST._bpMoveMode?' active':''}" onclick="ST._bpMoveMode=!ST._bpMoveMode;ST._bpSelected=[];renderTab()">${ST._bpMoveMode?'✅ Flytt modus':'🔀 Flytt bord'}</button>
+        ${ST._bpMoveMode ? `<button class="btn btn-sm" onclick="saveBpLayout(true)">💾 Lagre layout</button>` : ''}
+      </span>
+    </div>
+
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <div style="flex:0 0 auto">
+        <div id="bp-canvas" style="position:relative;width:590px;height:510px;background:#f5f0eb;border:1px solid #bbb;border-radius:6px;overflow:hidden;touch-action:none">
+          <div style="position:absolute;left:390px;top:197px;width:195px;border-top:2px dashed #a1887f;text-align:center;font-size:10px;font-weight:600;color:#8d6e63;letter-spacing:1px;padding-top:3px">↑ INNGANGEN ↑</div>
+          ${tableEls}
+        </div>
+        <div style="display:flex;gap:10px;margin-top:6px;font-size:0.75rem;flex-wrap:wrap">
+          <span><span style="display:inline-block;width:11px;height:11px;background:#e8f5e9;border:1px solid #43a047;vertical-align:middle;margin-right:3px"></span>Ledig</span>
+          <span><span style="display:inline-block;width:11px;height:11px;background:#fff8e1;border:1px solid #fb8c00;vertical-align:middle;margin-right:3px"></span>Booket</span>
+          <span><span style="display:inline-block;width:11px;height:11px;background:#ffebee;border:1px solid #e53935;vertical-align:middle;margin-right:3px"></span>Opptatt nå</span>
+          <span><span style="display:inline-block;width:11px;height:11px;background:#bbdefb;border:1px solid #1565c0;vertical-align:middle;margin-right:3px"></span>Valgt</span>
+          <span><span style="display:inline-block;width:11px;height:11px;background:#d7ccc8;border:1px solid #8d6e63;vertical-align:middle;margin-right:3px"></span>Benk</span>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:220px;max-width:300px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:0.9rem">Bookinger denne dagen</strong>
+          <button class="btn btn-primary btn-sm" onclick="openBpBookingModal([],'${dateStr}',null)">+ Ny</button>
+        </div>
+        ${bookingRows}
+      </div>
+    </div>
+  </div>
+
+  <div id="bp-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:900;align-items:center;justify-content:center" onclick="if(event.target===this)closeBpModal()">
+    <div id="bp-modal-inner" style="background:#fff;border-radius:8px;padding:24px;width:400px;max-width:calc(100vw - 32px);max-height:calc(100vh - 32px);overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.25)"></div>
+  </div>`;
+}
+
+function initBordplan() {
+  const canvas = document.getElementById('bp-canvas');
+  if (!canvas) return;
+
+  let dragging = null, dragOffX = 0, dragOffY = 0, startX = 0, startY = 0, hasMoved = false;
+
+  canvas.addEventListener('pointerdown', e => {
+    const el = e.target.closest('.bp-table, .bp-bench');
+    if (!el) return;
+    if (!ST._bpMoveMode) return; // clicks handled by click event
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    dragging = el;
+    const cr = canvas.getBoundingClientRect();
+    dragOffX = e.clientX - cr.left - parseFloat(el.style.left);
+    dragOffY = e.clientY - cr.top  - parseFloat(el.style.top);
+    startX = e.clientX; startY = e.clientY;
+    hasMoved = false;
+    el.style.zIndex = 100;
+  }, { passive: false });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    e.preventDefault();
+    if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) hasMoved = true;
+    if (!hasMoved) return;
+    const cr = canvas.getBoundingClientRect();
+    const nx = Math.max(0, Math.min(cr.width  - dragging.offsetWidth,  e.clientX - cr.left - dragOffX));
+    const ny = Math.max(0, Math.min(cr.height - dragging.offsetHeight, e.clientY - cr.top  - dragOffY));
+    dragging.style.left = nx + 'px';
+    dragging.style.top  = ny + 'px';
+  }, { passive: false });
+
+  canvas.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    dragging.style.zIndex = '';
+    if (hasMoved) {
+      const id = dragging.dataset.id;
+      const nx = Math.round(parseFloat(dragging.style.left));
+      const ny = Math.round(parseFloat(dragging.style.top));
+      const tbl = (ST._bpLayout || []).find(t => t.id === id);
+      if (tbl) { tbl.x = nx; tbl.y = ny; }
+      bpSnapTable(id);
+    }
+    dragging = null; hasMoved = false;
+  });
+
+  // Click-to-select (non-move mode)
+  canvas.addEventListener('click', e => {
+    if (ST._bpMoveMode) return;
+    const el = e.target.closest('.bp-table');
+    if (!el) return;
+    const id = el.dataset.id;
+    ST._bpSelected = ST._bpSelected || [];
+    const idx = ST._bpSelected.indexOf(id);
+    if (idx >= 0) ST._bpSelected.splice(idx, 1);
+    else ST._bpSelected.push(id);
+    renderTab();
+  });
+}
+
+function bpSnapTable(id) {
+  const SNAP = 22;
+  const layout = ST._bpLayout || [];
+  const tbl = layout.find(t => t.id === id);
+  if (!tbl) return;
+  let sx = tbl.x, sy = tbl.y;
+
+  for (const o of layout) {
+    if (o.id === id) continue;
+    // right edge of dragged → left edge of other (same row)
+    if (Math.abs((tbl.x + tbl.w) - o.x) < SNAP && Math.abs(tbl.y - o.y) < SNAP) { sx = o.x - tbl.w; sy = o.y; break; }
+    // left edge of dragged → right edge of other
+    if (Math.abs(tbl.x - (o.x + o.w)) < SNAP && Math.abs(tbl.y - o.y) < SNAP)  { sx = o.x + o.w; sy = o.y; break; }
+    // bottom of dragged → top of other (same col)
+    if (Math.abs((tbl.y + tbl.h) - o.y) < SNAP && Math.abs(tbl.x - o.x) < SNAP) { sy = o.y - tbl.h; sx = o.x; break; }
+    // top of dragged → bottom of other
+    if (Math.abs(tbl.y - (o.y + o.h)) < SNAP && Math.abs(tbl.x - o.x) < SNAP)  { sy = o.y + o.h; sx = o.x; break; }
+  }
+
+  if (sx !== tbl.x || sy !== tbl.y) {
+    tbl.x = sx; tbl.y = sy;
+    const el = document.querySelector(`[data-id="${id}"]`);
+    if (el) { el.style.left = sx + 'px'; el.style.top = sy + 'px'; }
+  }
+}
+
+async function saveBpLayout(showMsg) {
+  if (!ST._bpLayout) return;
+  try {
+    await sbFetch('bordplan_layout?on_conflict=table_id', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: ST._bpLayout,
+    });
+    if (showMsg) showAlert('Bordlayout lagret.');
+  } catch(e) {
+    if (showMsg) showAlert('Feil ved lagring av layout: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+function openBpBookingModal(tableIds, dateStr, existingId) {
+  const modal = document.getElementById('bp-modal');
+  const inner = document.getElementById('bp-modal-inner');
+  if (!modal || !inner) return;
+
+  const existing = existingId ? (ST._bpBookings || []).find(b => b.id == existingId) : null;
+  const layout   = (ST._bpLayout || []).filter(t => !t.is_bench);
+  const eIds     = existing ? (Array.isArray(existing.table_ids) ? existing.table_ids : JSON.parse(existing.table_ids || '[]')) : tableIds;
+  const isRec    = !!(existing?.recurring_weekly);
+  const dateVal  = existing?.booking_date || dateStr;
+
+  const checkboxes = layout.map(t => {
+    const chk = eIds.includes(t.id) ? 'checked' : '';
+    return `<label style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px;cursor:pointer;font-size:0.85rem"><input type="checkbox" name="bp-tbl" value="${t.id}" ${chk}> ${esc(t.label)}</label>`;
+  }).join('');
+
+  inner.innerHTML = `
+    <h3 style="margin:0 0 16px;font-size:1rem">${existing ? 'Rediger booking' : 'Ny bordbestilling'}</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:4px">Bord <span style="color:red">*</span></label>
+        <div style="border:1px solid #ddd;border-radius:4px;padding:6px;display:flex;flex-wrap:wrap;max-height:110px;overflow-y:auto">${checkboxes}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label style="font-size:0.82rem;font-weight:600">Fra <span style="color:red">*</span></label>
+          <input id="bp-start" type="time" value="${(existing?.start_time||'').slice(0,5)}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:0.82rem;font-weight:600">Til</label>
+          <input id="bp-end" type="time" value="${(existing?.end_time||'').slice(0,5)}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label style="font-size:0.82rem;font-weight:600">Dato</label>
+          <input id="bp-date" type="date" value="${dateVal}" ${isRec?'disabled':''} style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+        <div>
+          <label style="font-size:0.82rem;font-weight:600">Antall personer</label>
+          <input id="bp-pax" type="number" min="1" value="${existing?.pax||''}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:0.82rem;font-weight:600">Navn / gruppe</label>
+        <input id="bp-name" type="text" value="${esc(existing?.name||'')}" placeholder="f.eks. Mandagsgruppen" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:0.82rem;font-weight:600">Notat</label>
+        <input id="bp-note" type="text" value="${esc(existing?.note||'')}" placeholder="Valgfritt" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
+        <input type="checkbox" id="bp-recurring" ${isRec?'checked':''} onchange="document.getElementById('bp-date').disabled=this.checked">
+        Gjenta ukentlig (samme ukedag)
+      </label>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+      <button class="btn" onclick="closeBpModal()">Avbryt</button>
+      <button class="btn btn-primary" onclick="saveBpBooking('${existingId||''}','${dateStr}')">Lagre</button>
+    </div>`;
+
+  modal.style.display = 'flex';
+}
+
+function closeBpModal() {
+  const m = document.getElementById('bp-modal');
+  if (m) m.style.display = 'none';
+}
+
+async function saveBpBooking(existingId, fallbackDate) {
+  const startTime = document.getElementById('bp-start')?.value;
+  if (!startTime) { showAlert('Velg starttidspunkt.'); return; }
+  const tableIds = [...document.querySelectorAll('input[name="bp-tbl"]:checked')].map(cb => cb.value);
+  if (!tableIds.length) { showAlert('Velg minst ett bord.'); return; }
+
+  const isRec  = document.getElementById('bp-recurring')?.checked || false;
+  const dateV  = document.getElementById('bp-date')?.value || fallbackDate;
+  const wkday  = isRec ? (new Date(dateV + 'T12:00:00').getDay() === 0 ? 6 : new Date(dateV + 'T12:00:00').getDay() - 1) : null;
+
+  const data = {
+    start_time:        startTime,
+    end_time:          document.getElementById('bp-end')?.value || null,
+    pax:               parseInt(document.getElementById('bp-pax')?.value) || null,
+    name:              document.getElementById('bp-name')?.value?.trim() || null,
+    note:              document.getElementById('bp-note')?.value?.trim() || null,
+    table_ids:         tableIds,
+    recurring_weekly:  isRec,
+    recurring_weekday: wkday,
+    booking_date:      isRec ? null : dateV,
+  };
+
+  try {
+    if (existingId) {
+      await sbPatch('bordplan_bookings?id=eq.' + existingId, data);
+    } else {
+      await sbPost('bordplan_bookings', data);
+    }
+    closeBpModal();
+    ST._bpBookings = null;
+    ST._bpSelected = [];
+    showAlert('Booking lagret.');
+    renderTab();
+  } catch(e) {
+    showAlert('Feil ved lagring: ' + e.message, 'error');
+  }
+}
+
+async function deleteBpBooking(id, isRecurring) {
+  const msg = isRecurring
+    ? 'Dette er en ukentlig gjentagende booking. Vil du slette den for alle uker?'
+    : 'Slett denne bookingen?';
+  if (!confirm(msg)) return;
+  try {
+    await sbDelete('bordplan_bookings?id=eq.' + id);
+    ST._bpBookings = null;
+    showAlert('Booking slettet.');
+    renderTab();
+  } catch(e) {
+    showAlert('Feil ved sletting: ' + e.message, 'error');
+  }
+}
+
+// =============================================================
 //  TAB: ORDRE & FAKTURA
 // =============================================================
 async function buildBestilling() {
@@ -4989,9 +5408,10 @@ async function buildBestilling() {
     <div class="sub-nav">
       <button class="${subTab==='historikk'?'active':''}" onclick="ST.subTab.bestilling='historikk';renderTab()">📋 Ordre</button>
       <button class="${subTab==='bord'?'active':''}"      onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeStaff}</button>
+      <button class="${subTab==='bordplan'?'active':''}"  onclick="ST.subTab.bestilling='bordplan';renderTab()">🗺️ Bordplan</button>
       <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
     </div>
-    ${subTab === 'bord' ? await buildBord() : await buildBestillingHistorikk()}`;
+    ${subTab === 'bordplan' ? await buildBordplan() : subTab === 'bord' ? await buildBord() : await buildBestillingHistorikk()}`;
   }
 
   // Admin: full flat sub-nav
@@ -5006,6 +5426,7 @@ async function buildBestilling() {
   if      (subTab === 'ny')           content = buildOrdreForm();
   else if (subTab === 'foresporsler') content = await buildOrdreForesporsler();
   else if (subTab === 'bord')         content = await buildBord();
+  else if (subTab === 'bordplan')     content = await buildBordplan();
   else                                content = await buildBestillingHistorikk();
 
   return `
@@ -5014,6 +5435,7 @@ async function buildBestilling() {
     <button class="${subTab==='ny'?'active':''}" onclick="ST.subTab.bestilling='ny';ST._ordreEdit=null;ST._ordreRows=null;ST._ordreFormState=null;renderTab()">+ Ny ordre</button>
     <button class="${subTab==='foresporsler'?'active':''}" onclick="ST.subTab.bestilling='foresporsler';renderTab()">📥 Forespørsler${reqBadge}</button>
     <button class="${subTab==='bord'?'active':''}" onclick="ST.subTab.bestilling='bord';renderTab()">🪑 Bord${bordBadgeSpan}</button>
+    <button class="${subTab==='bordplan'?'active':''}" onclick="ST.subTab.bestilling='bordplan';renderTab()">🗺️ Bordplan</button>
     ${ST._ordreEdit ? `<button class="active" style="pointer-events:none">✏️ Rediger ordre</button>` : ''}
     <button onclick="printBestillingQR()" style="margin-left:auto">🖨 QR-kode</button>
   </div>
