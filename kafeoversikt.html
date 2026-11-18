@@ -5013,7 +5013,7 @@ async function buildBordplan() {
   ST._bpMoveMode = ST._bpMoveMode || false;
 
   // Reload layout when date changes (date-specific overrides differ per day)
-  if (!ST._bpLayout || ST._bpLayoutDate !== dateStr) {
+  if (!ST._bpLayout || ST._bpLayoutDate !== ST._bpDate) {
     try {
       const baseRows = await sbGet('bordplan_layout?order=sort_order');
       const base = baseRows.length > 0
