@@ -4976,27 +4976,27 @@ const BP_DEFAULT_LAYOUT = [
   { id:'T1',  label:'T1',  x:30,  y:30,  w:65, h:50, is_bench:false, sort_order:1  },
   { id:'T2',  label:'T2',  x:105, y:30,  w:65, h:50, is_bench:false, sort_order:2  },
   { id:'T3',  label:'T3',  x:180, y:30,  w:65, h:50, is_bench:false, sort_order:3  },
-  { id:'B1',  label:'',    x:30,  y:88,  w:215,h:15, is_bench:true,  sort_order:4  },
+  { id:'B1',  label:'',    x:30,  y:15,  w:215,h:15, is_bench:true,  sort_order:4  },
   // Left cluster – bottom
   { id:'T4',  label:'T4',  x:30,  y:155, w:60, h:50, is_bench:false, sort_order:5  },
   { id:'T5',  label:'T5',  x:100, y:155, w:60, h:50, is_bench:false, sort_order:6  },
-  { id:'B2',  label:'',    x:30,  y:213, w:130,h:15, is_bench:true,  sort_order:7  },
   // Right cluster – above entrance
   { id:'T6',  label:'T6',  x:410, y:30,  w:65, h:50, is_bench:false, sort_order:8  },
   { id:'T7',  label:'T7',  x:485, y:30,  w:65, h:50, is_bench:false, sort_order:9  },
-  { id:'B3',  label:'',    x:558, y:30,  w:15, h:50, is_bench:true,  sort_order:10 },
+  { id:'B2',  label:'',    x:410, y:15,  w:140,h:15, is_bench:true,  sort_order:7  },
+  { id:'B3',  label:'',    x:685, y:30,  w:15, h:50, is_bench:true,  sort_order:10 },
   { id:'T8',  label:'T8',  x:410, y:90,  w:65, h:50, is_bench:false, sort_order:11 },
   { id:'T9',  label:'T9',  x:485, y:90,  w:65, h:50, is_bench:false, sort_order:12 },
-  { id:'B4',  label:'',    x:558, y:90,  w:15, h:50, is_bench:true,  sort_order:13 },
+  { id:'B4',  label:'',    x:685, y:90,  w:15, h:50, is_bench:true,  sort_order:13 },
   // Right cluster – below entrance
   { id:'T10', label:'T10', x:410, y:255, w:65, h:50, is_bench:false, sort_order:14 },
   { id:'T11', label:'T11', x:485, y:255, w:65, h:50, is_bench:false, sort_order:15 },
-  { id:'B5',  label:'',    x:558, y:255, w:15, h:50, is_bench:true,  sort_order:16 },
+  { id:'B5',  label:'',    x:685, y:255, w:15, h:50, is_bench:true,  sort_order:16 },
   { id:'T12', label:'T12', x:410, y:315, w:65, h:50, is_bench:false, sort_order:17 },
   { id:'T13', label:'T13', x:485, y:315, w:65, h:50, is_bench:false, sort_order:18 },
   { id:'T14', label:'T14', x:410, y:375, w:65, h:50, is_bench:false, sort_order:19 },
   { id:'T15', label:'T15', x:485, y:375, w:65, h:50, is_bench:false, sort_order:20 },
-  { id:'B6',  label:'',    x:558, y:375, w:15, h:50, is_bench:true,  sort_order:21 },
+  { id:'B6',  label:'',    x:685, y:375, w:15, h:50, is_bench:true,  sort_order:21 },
   { id:'T16', label:'T16', x:410, y:435, w:65, h:50, is_bench:false, sort_order:22 },
   { id:'T17', label:'T17', x:485, y:435, w:65, h:50, is_bench:false, sort_order:23 },
   // Extra tables – left side lower cluster
@@ -5015,7 +5015,9 @@ async function buildBordplan() {
   if (!ST._bpLayout) {
     try {
       const rows = await sbGet('bordplan_layout?order=sort_order');
-      ST._bpLayout = rows.length > 0 ? rows : BP_DEFAULT_LAYOUT.map(t => ({...t}));
+      ST._bpLayout = rows.length > 0
+        ? rows.map(({ table_id, ...r }) => ({ id: table_id, ...r }))
+        : BP_DEFAULT_LAYOUT.map(t => ({...t}));
     } catch(e) {
       ST._bpLayout = BP_DEFAULT_LAYOUT.map(t => ({...t}));
     }
@@ -5083,6 +5085,12 @@ async function buildBordplan() {
     </div>`;
   }).join('');
 
+  // Pin vertical benches in the right half to the canvas right edge
+  const canvasW = 700;
+  layout.forEach(t => {
+    if (t.is_bench && t.h > t.w && t.x > canvasW / 2) t.x = canvasW - t.w;
+  });
+
   const selCount = ST._bpSelected.length;
 
   // Date helpers
@@ -5100,7 +5108,7 @@ async function buildBordplan() {
         const ids = Array.isArray(b.table_ids) ? b.table_ids : JSON.parse(b.table_ids || '[]');
         const tLabels = ids.map(id => layout.find(t => t.id === id)?.label || id).join(', ');
         const idsJson = JSON.stringify(ids).replace(/"/g,'&quot;');
-        return `<div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:0.82rem">
+        return `<div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;font-size:0.82rem;min-width:220px;max-width:300px;flex:1 1 220px">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
             <div>
               <strong>${(b.start_time||'?').slice(0,5)}${b.end_time?' – '+(b.end_time).slice(0,5):''}</strong>
@@ -5135,16 +5143,15 @@ async function buildBordplan() {
         <button class="btn btn-sm${ST._bpMoveMode?' active':''}" onclick="ST._bpMoveMode=!ST._bpMoveMode;ST._bpSelected=[];renderTab()">${ST._bpMoveMode?'✅ Flytt modus':'🔀 Flytt bord'}</button>
         ${ST._bpMoveMode ? `
           <button class="btn btn-sm" onclick="addBpTable()">➕ Bord</button>
-          <button class="btn btn-sm" onclick="addBpBench()">➕ Benk</button>
           ${ST._bpSelected.length === 1 ? `<button class="btn btn-sm" style="color:#c62828" onclick="deleteBpTable('${ST._bpSelected[0]}')">🗑️ Slett</button>` : ''}
           <button class="btn btn-sm" onclick="saveBpLayout(true)">💾 Lagre layout</button>
         ` : ''}
       </span>
     </div>
 
-    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
-      <div style="flex:0 0 auto">
-        <div id="bp-canvas" style="position:relative;width:590px;height:580px;background:#f5f0eb;border:1px solid #bbb;border-radius:6px;overflow:hidden;touch-action:none">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div id="bp-canvas" style="position:relative;width:700px;height:580px;background:#f5f0eb;border:1px solid #bbb;border-radius:6px;overflow:hidden;touch-action:none">
           <div style="position:absolute;left:390px;top:197px;width:195px;border-top:2px dashed #a1887f;text-align:center;font-size:10px;font-weight:600;color:#8d6e63;letter-spacing:1px;padding-top:3px">↑ INNGANGEN ↑</div>
           ${tableEls}
         </div>
@@ -5157,12 +5164,14 @@ async function buildBordplan() {
         </div>
       </div>
 
-      <div style="flex:1;min-width:220px;max-width:300px">
+      <div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
           <strong style="font-size:0.9rem">Bookinger denne dagen</strong>
           <button class="btn btn-primary btn-sm" onclick="openBpBookingModal([],'${dateStr}',null)">+ Ny</button>
         </div>
-        ${bookingRows}
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${bookingRows}
+        </div>
       </div>
     </div>
   </div>
@@ -5254,11 +5263,11 @@ function bpSnapTable(id) {
   const SNAP = 22;
   const layout = ST._bpLayout || [];
   const tbl = layout.find(t => t.id === id);
-  if (!tbl) return;
+  if (!tbl || tbl.is_bench) return; // benches are placed freely, no snapping
   let sx = tbl.x, sy = tbl.y;
 
   for (const o of layout) {
-    if (o.id === id) continue;
+    if (o.id === id || o.is_bench) continue; // only snap tables to other tables
     // right edge of dragged → left edge of other (same row)
     if (Math.abs((tbl.x + tbl.w) - o.x) < SNAP && Math.abs(tbl.y - o.y) < SNAP) { sx = o.x - tbl.w; sy = o.y; break; }
     // left edge of dragged → right edge of other
@@ -5279,10 +5288,11 @@ function bpSnapTable(id) {
 async function saveBpLayout(showMsg) {
   if (!ST._bpLayout) return;
   try {
+    const rows = ST._bpLayout.map(({ id, ...rest }) => ({ table_id: id, ...rest }));
     await sbFetch('bordplan_layout?on_conflict=table_id', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: ST._bpLayout,
+      body: rows,
     });
     if (showMsg) showAlert('Bordlayout lagret.');
   } catch(e) {
@@ -5299,10 +5309,11 @@ async function addBpTable() {
   const newT = { id: 'T' + n + '_' + Date.now(), label: 'T' + n, x: 20, y: 20, w: 65, h: 50, is_bench: false, sort_order: layout.length + 1 };
   ST._bpLayout.push(newT);
   try {
+    const { id, ...rest } = newT;
     await sbFetch('bordplan_layout?on_conflict=table_id', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: [newT],
+      body: [{ table_id: id, ...rest }],
     });
   } catch(e) { console.error(e); }
   renderTab();
@@ -5313,10 +5324,11 @@ async function addBpBench() {
   const newB = { id: 'bench_' + Date.now(), label: '', x: 20, y: 20, w: 120, h: 15, is_bench: true, sort_order: layout.length + 1 };
   ST._bpLayout.push(newB);
   try {
+    const { id, ...rest } = newB;
     await sbFetch('bordplan_layout?on_conflict=table_id', {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: [newB],
+      body: [{ table_id: id, ...rest }],
     });
   } catch(e) { console.error(e); }
   renderTab();
