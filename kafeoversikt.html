@@ -5012,15 +5012,24 @@ async function buildBordplan() {
   ST._bpSelected = ST._bpSelected || [];
   ST._bpMoveMode = ST._bpMoveMode || false;
 
-  if (!ST._bpLayout) {
+  // Reload layout when date changes (date-specific overrides differ per day)
+  if (!ST._bpLayout || ST._bpLayoutDate !== dateStr) {
     try {
-      const rows = await sbGet('bordplan_layout?order=sort_order');
-      ST._bpLayout = rows.length > 0
-        ? rows.map(({ table_id, ...r }) => ({ id: table_id, ...r }))
+      const baseRows = await sbGet('bordplan_layout?order=sort_order');
+      const base = baseRows.length > 0
+        ? baseRows.map(({ table_id, ...r }) => ({ id: table_id, ...r }))
         : BP_DEFAULT_LAYOUT.map(t => ({...t}));
+      // Apply any date-specific position overrides
+      const overrides = await sbGet(`bordplan_date_layout?layout_date=eq.${dateStr}`);
+      const ovMap = {};
+      overrides.forEach(o => ovMap[o.table_id] = o);
+      ST._bpLayout = base.map(t => ovMap[t.id] ? { ...t, x: ovMap[t.id].x, y: ovMap[t.id].y } : t);
+      ST._bpHasDateOverride = overrides.length > 0;
     } catch(e) {
       ST._bpLayout = BP_DEFAULT_LAYOUT.map(t => ({...t}));
+      ST._bpHasDateOverride = false;
     }
+    ST._bpLayoutDate = dateStr;
   }
 
   const dateStr   = ST._bpDate;
@@ -5130,10 +5139,10 @@ async function buildBordplan() {
   return `
   <div style="display:flex;flex-direction:column;gap:10px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,-1)}';ST._bpBookings=null;ST._bpSelected=[];renderTab()">◀</button>
+      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,-1)}';ST._bpBookings=null;ST._bpLayout=null;ST._bpSelected=[];renderTab()">◀</button>
       <strong style="min-width:170px;text-align:center">${fmtLong(dateStr)}</strong>
-      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,1)}';ST._bpBookings=null;ST._bpSelected=[];renderTab()">▶</button>
-      <button class="btn btn-sm" onclick="ST._bpDate=new Date().toISOString().slice(0,10);ST._bpBookings=null;ST._bpSelected=[];renderTab()">I dag</button>
+      <button class="btn btn-sm" onclick="ST._bpDate='${shiftDate(dateStr,1)}';ST._bpBookings=null;ST._bpLayout=null;ST._bpSelected=[];renderTab()">▶</button>
+      <button class="btn btn-sm" onclick="ST._bpDate=new Date().toISOString().slice(0,10);ST._bpBookings=null;ST._bpLayout=null;ST._bpSelected=[];renderTab()">I dag</button>
       <span style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         ${selCount > 0
           ? `<span style="color:#1565c0;font-weight:600">${selCount} bord valgt</span>
@@ -5144,7 +5153,9 @@ async function buildBordplan() {
         ${ST._bpMoveMode ? `
           <button class="btn btn-sm" onclick="addBpTable()">➕ Bord</button>
           ${ST._bpSelected.length === 1 ? `<button class="btn btn-sm" style="color:#c62828" onclick="deleteBpTable('${ST._bpSelected[0]}')">🗑️ Slett</button>` : ''}
-          <button class="btn btn-sm" onclick="saveBpLayout(true)">💾 Lagre layout</button>
+          <button class="btn btn-sm" onclick="saveBpDateLayout('${dateStr}')" title="Kun for denne dagen — nullstilles neste dag">📅 Lagre for i dag</button>
+          ${ST.role === 'admin' ? `<button class="btn btn-sm" onclick="saveBpLayout(true)" title="Oppdater standardoppsett for alle dager">💾 Lagre standard</button>` : ''}
+          ${ST._bpHasDateOverride ? `<button class="btn btn-sm" style="color:#e65100" onclick="resetBpDateLayout('${dateStr}')" title="Fjern dagens tilpasning og bruk standardoppsett">↩ Tilbakestill</button>` : ''}
         ` : ''}
       </span>
     </div>
@@ -5306,10 +5317,45 @@ async function saveBpLayout(showMsg) {
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
       body: rows,
     });
-    if (showMsg) showAlert('Bordlayout lagret.');
+    if (showMsg) {
+      ST._bpMoveMode = false;
+      showAlert('Bordlayout lagret.');
+      renderTab();
+    }
   } catch(e) {
     if (showMsg) showAlert('Feil ved lagring av layout: ' + e.message, 'error');
     console.error(e);
+  }
+}
+
+async function saveBpDateLayout(dateStr) {
+  if (!ST._bpLayout) return;
+  try {
+    const rows = ST._bpLayout.map(t => ({ table_id: t.id, layout_date: dateStr, x: t.x, y: t.y }));
+    await sbFetch('bordplan_date_layout?on_conflict=table_id,layout_date', {
+      method: 'POST',
+      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body: rows,
+    });
+    ST._bpHasDateOverride = true;
+    ST._bpMoveMode = false;
+    showAlert('Bordoppsett lagret for i dag. Standard-oppsettet er uendret.');
+    renderTab();
+  } catch(e) {
+    showAlert('Feil ved lagring: ' + e.message, 'error');
+  }
+}
+
+async function resetBpDateLayout(dateStr) {
+  if (!confirm('Fjerne dagens tilpasning og gå tilbake til standardoppsett?')) return;
+  try {
+    await sbDelete('bordplan_date_layout?layout_date=eq.' + dateStr);
+    ST._bpLayout = null;
+    ST._bpHasDateOverride = false;
+    showAlert('Tilbakestilt til standardoppsett.');
+    renderTab();
+  } catch(e) {
+    showAlert('Feil: ' + e.message, 'error');
   }
 }
 
