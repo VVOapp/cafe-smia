@@ -5087,10 +5087,17 @@ async function buildBordplan() {
       return `<div class="bp-bench" data-id="${t.id}" style="position:absolute;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${statusStyle.bench};border-radius:3px;box-sizing:border-box;cursor:${ST._bpMoveMode?'grab':'default'};touch-action:none;user-select:none" title="Benk"></div>`;
     }
     const st  = tableStatus(t.id);
-    const bks = tblBks[t.id] || [];
-    return `<div class="bp-table" data-id="${t.id}" style="position:absolute;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${statusStyle[st]};border-radius:5px;cursor:${ST._bpMoveMode?'grab':'pointer'};box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:600;touch-action:none;user-select:none" title="${bks.length?bks.map(b=>(b.start_time||'').slice(0,5)+(b.name?' '+b.name:'')).join(', '):'Ledig'}">
-      <span>${esc(t.label)}</span>
-      ${bks.length ? `<span style="font-size:9px;font-weight:400">${bks.length} bk.</span>` : ''}
+    const bks = (tblBks[t.id] || []).slice().sort((a,b) => (a.start_time||'').localeCompare(b.start_time||''));
+    const nb  = bks[0];
+    const title = bks.length ? bks.map(b => (b.start_time||'').slice(0,5) + (b.name?' '+b.name:'')).join(', ') : 'Ledig';
+    const inner = bks.length
+      ? `<span style="font-size:9px;font-weight:400;opacity:0.75;line-height:1">${esc(t.label)}</span>
+         <span style="font-size:12px;font-weight:700;line-height:1.2">${(nb.start_time||'').slice(0,5)}</span>
+         ${nb.name ? `<span style="font-size:8px;font-weight:400;max-width:${t.w-6}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1">${esc(nb.name)}</span>` : ''}
+         ${bks.length > 1 ? `<span style="font-size:8px;font-weight:400;opacity:0.65">+${bks.length-1}</span>` : ''}`
+      : `<span style="font-size:12px;font-weight:600">${esc(t.label)}</span>`;
+    return `<div class="bp-table" data-id="${t.id}" style="position:absolute;left:${t.x}px;top:${t.y}px;width:${t.w}px;height:${t.h}px;${statusStyle[st]};border-radius:5px;cursor:${ST._bpMoveMode?'grab':'pointer'};box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:2px;text-align:center;touch-action:none;user-select:none" title="${title}">
+      ${inner}
     </div>`;
   }).join('');
 
@@ -5117,7 +5124,8 @@ async function buildBordplan() {
         const ids = Array.isArray(b.table_ids) ? b.table_ids : JSON.parse(b.table_ids || '[]');
         const tLabels = ids.map(id => layout.find(t => t.id === id)?.label || id).join(', ');
         const idsJson = JSON.stringify(ids).replace(/"/g,'&quot;');
-        return `<div style="background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;font-size:0.82rem;min-width:220px;max-width:300px;flex:1 1 220px">
+        const highlighted = (ST._bpSelected || []).some(selId => ids.includes(selId));
+        return `<div style="background:#fff;border:2px solid ${highlighted?'#1565c0':'#e0e0e0'};border-radius:6px;padding:8px 10px;font-size:0.82rem;min-width:220px;max-width:300px;flex:1 1 220px;${highlighted?'box-shadow:0 0 0 3px #bbdefb;':''}">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
             <div>
               <strong>${(b.start_time||'?').slice(0,5)}${b.end_time?' – '+(b.end_time).slice(0,5):''}</strong>
