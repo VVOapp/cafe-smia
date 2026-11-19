@@ -5416,19 +5416,12 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
     return `<label style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px;cursor:pointer;font-size:0.85rem"><input type="checkbox" name="bp-tbl" value="${t.id}" ${chk}> ${esc(t.label)}</label>`;
   }).join('');
 
-  // Build 14-day chips starting from dateStr
-  const dayNames = ['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
-  const monthNames = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des'];
-  let chips = '';
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(dateStr + 'T12:00:00');
-    d.setDate(d.getDate() + i);
-    const dStr = d.toISOString().slice(0, 10);
-    const lbl  = `${dayNames[d.getDay()]} ${d.getDate()}. ${monthNames[d.getMonth()]}`;
-    chips += `<div class="bp-day-chip" data-date="${dStr}"
+  // Mon–Thu weekday chips (café is only open Mon–Thu)
+  const weekdayChips = [[0,'Mandag'],[1,'Tirsdag'],[2,'Onsdag'],[3,'Torsdag']].map(([wk, lbl]) =>
+    `<div class="bp-day-chip" data-wkday="${wk}"
       onclick="this.classList.toggle('sel');this.style.background=this.classList.contains('sel')?'#1565c0':'#fff';this.style.color=this.classList.contains('sel')?'#fff':'#333';this.style.borderColor=this.classList.contains('sel')?'#1565c0':'#ccc';"
-      style="cursor:pointer;padding:5px 10px;border:2px solid #ccc;border-radius:6px;font-size:0.8rem;user-select:none;background:#fff;color:#333;white-space:nowrap">${lbl}</div>`;
-  }
+      style="cursor:pointer;padding:8px 16px;border:2px solid #ccc;border-radius:6px;font-size:0.88rem;user-select:none;background:#fff;color:#333">${lbl}</div>`
+  ).join('');
 
   // Booking type: editing a recurring shows 'recurring', otherwise 'single'
   const initType = isRec ? 'recurring' : 'single';
@@ -5485,8 +5478,8 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
         </div>
       </div>
       <div id="bp-multi-row" style="display:none">
-        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:6px">Velg datoer (neste 14 dager)</label>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:6px">Velg ukedager (gjentas ukentlig)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">${weekdayChips}</div>
         <div style="margin-top:8px">
           <label style="font-size:0.82rem;font-weight:600">Antall personer</label>
           <input id="bp-pax" type="number" min="1" value="${existing?.pax||''}" style="width:120px;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
@@ -5542,15 +5535,15 @@ async function saveBpBooking(existingId, fallbackDate) {
 
   try {
     if (bookingType === 'multi') {
-      const selectedDates = [...document.querySelectorAll('.bp-day-chip.sel')].map(el => el.dataset.date);
-      if (!selectedDates.length) { showAlert('Velg minst én dato.'); return; }
-      for (const d of selectedDates) {
-        await sbPost('bordplan_bookings', { ...baseData, recurring_weekly: false, recurring_weekday: null, booking_date: d });
+      const selectedWkdays = [...document.querySelectorAll('.bp-day-chip.sel')].map(el => parseInt(el.dataset.wkday));
+      if (!selectedWkdays.length) { showAlert('Velg minst én ukedag.'); return; }
+      for (const wk of selectedWkdays) {
+        await sbPost('bordplan_bookings', { ...baseData, recurring_weekly: true, recurring_weekday: wk, booking_date: null });
       }
       closeBpModal();
       ST._bpBookings = null;
       ST._bpSelected = [];
-      showAlert(`${selectedDates.length} bookinger lagret.`);
+      showAlert(`${selectedWkdays.length} ukentlige bookinger lagret.`);
       renderTab();
       return;
     }
