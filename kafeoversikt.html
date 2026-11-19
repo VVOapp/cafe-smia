@@ -5416,6 +5416,8 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
     return `<label style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px;cursor:pointer;font-size:0.85rem"><input type="checkbox" name="bp-tbl" value="${t.id}" ${chk}> ${esc(t.label)}</label>`;
   }).join('');
 
+  const dayNames = ['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
+
   // Mon–Thu weekday chips (café is only open Mon–Thu)
   const weekdayChips = [[0,'Mandag'],[1,'Tirsdag'],[2,'Onsdag'],[3,'Torsdag']].map(([wk, lbl]) =>
     `<div class="bp-day-chip" data-wkday="${wk}"
