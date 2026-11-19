@@ -5416,8 +5416,25 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
     return `<label style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px;cursor:pointer;font-size:0.85rem"><input type="checkbox" name="bp-tbl" value="${t.id}" ${chk}> ${esc(t.label)}</label>`;
   }).join('');
 
+  // Build 14-day chips starting from dateStr
+  const dayNames = ['Søn','Man','Tir','Ons','Tor','Fre','Lør'];
+  const monthNames = ['jan','feb','mar','apr','mai','jun','jul','aug','sep','okt','nov','des'];
+  let chips = '';
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    const dStr = d.toISOString().slice(0, 10);
+    const lbl  = `${dayNames[d.getDay()]} ${d.getDate()}. ${monthNames[d.getMonth()]}`;
+    chips += `<div class="bp-day-chip" data-date="${dStr}"
+      onclick="this.classList.toggle('sel');this.style.background=this.classList.contains('sel')?'#1565c0':'#fff';this.style.color=this.classList.contains('sel')?'#fff':'#333';this.style.borderColor=this.classList.contains('sel')?'#1565c0':'#ccc';"
+      style="cursor:pointer;padding:5px 10px;border:2px solid #ccc;border-radius:6px;font-size:0.8rem;user-select:none;background:#fff;color:#333;white-space:nowrap">${lbl}</div>`;
+  }
+
+  // Booking type: editing a recurring shows 'recurring', otherwise 'single'
+  const initType = isRec ? 'recurring' : 'single';
+
   inner.innerHTML = `
-    <h3 style="margin:0 0 16px;font-size:1rem">${existing ? 'Rediger booking' : 'Ny bordbestilling'}</h3>
+    <h3 style="margin:0 0 14px;font-size:1rem">${existing ? 'Rediger booking' : 'Ny bordbestilling'}</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div>
         <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:4px">Bord <span style="color:red">*</span></label>
@@ -5433,14 +5450,46 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
           <input id="bp-end" type="time" value="${(existing?.end_time||'').slice(0,5)}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:6px">Datoer <span style="color:red">*</span></label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:${initType==='single'?'#e3f2fd':'#fff'}">
+            <input type="radio" name="bp-type" value="single" ${initType==='single'?'checked':''} onchange="bpToggleDateType(this.value)"> Enkelt dato
+          </label>
+          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:${initType==='recurring'?'#e3f2fd':'#fff'}">
+            <input type="radio" name="bp-type" value="recurring" ${initType==='recurring'?'checked':''} onchange="bpToggleDateType(this.value)"> Ukentlig
+          </label>
+          ${!existing ? `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.85rem;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:#fff">
+            <input type="radio" name="bp-type" value="multi" onchange="bpToggleDateType(this.value)"> Velg dager
+          </label>` : ''}
+        </div>
+      </div>
+      <div id="bp-single-row" style="display:${initType!=='recurring'?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px">
         <div>
           <label style="font-size:0.82rem;font-weight:600">Dato</label>
-          <input id="bp-date" type="date" value="${dateVal}" ${isRec?'disabled':''} style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+          <input id="bp-date" type="date" value="${dateVal}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
         </div>
         <div>
           <label style="font-size:0.82rem;font-weight:600">Antall personer</label>
           <input id="bp-pax" type="number" min="1" value="${existing?.pax||''}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+      </div>
+      <div id="bp-recurring-row" style="display:${initType==='recurring'?'grid':'none'};grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label style="font-size:0.82rem;font-weight:600;display:block">Ukedag</label>
+          <div style="padding:6px 0;font-size:0.85rem">${dayNames[new Date(dateVal+'T12:00:00').getDay()]} (fra valgt dato)</div>
+        </div>
+        <div>
+          <label style="font-size:0.82rem;font-weight:600">Antall personer</label>
+          <input id="bp-pax" type="number" min="1" value="${existing?.pax||''}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
+        </div>
+      </div>
+      <div id="bp-multi-row" style="display:none">
+        <label style="font-size:0.82rem;font-weight:600;display:block;margin-bottom:6px">Velg datoer (neste 14 dager)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+        <div style="margin-top:8px">
+          <label style="font-size:0.82rem;font-weight:600">Antall personer</label>
+          <input id="bp-pax" type="number" min="1" value="${existing?.pax||''}" style="width:120px;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
         </div>
       </div>
       <div>
@@ -5451,10 +5500,6 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
         <label style="font-size:0.82rem;font-weight:600">Notat</label>
         <input id="bp-note" type="text" value="${esc(existing?.note||'')}" placeholder="Valgfritt" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;margin-top:2px;box-sizing:border-box">
       </div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem">
-        <input type="checkbox" id="bp-recurring" ${isRec?'checked':''} onchange="document.getElementById('bp-date').disabled=this.checked">
-        Gjenta ukentlig (samme ukedag)
-      </label>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
       <button class="btn" onclick="closeBpModal()">Avbryt</button>
@@ -5462,6 +5507,16 @@ function openBpBookingModal(tableIds, dateStr, existingId) {
     </div>`;
 
   modal.style.display = 'flex';
+}
+
+function bpToggleDateType(type) {
+  document.getElementById('bp-single-row').style.display    = type === 'single'    ? 'grid' : 'none';
+  document.getElementById('bp-recurring-row').style.display = type === 'recurring' ? 'grid' : 'none';
+  document.getElementById('bp-multi-row').style.display     = type === 'multi'     ? 'block': 'none';
+  // Update radio button backgrounds
+  document.querySelectorAll('input[name="bp-type"]').forEach(r => {
+    r.parentElement.style.background = r.checked ? '#e3f2fd' : '#fff';
+  });
 }
 
 function closeBpModal() {
@@ -5475,23 +5530,36 @@ async function saveBpBooking(existingId, fallbackDate) {
   const tableIds = [...document.querySelectorAll('input[name="bp-tbl"]:checked')].map(cb => cb.value);
   if (!tableIds.length) { showAlert('Velg minst ett bord.'); return; }
 
-  const isRec  = document.getElementById('bp-recurring')?.checked || false;
-  const dateV  = document.getElementById('bp-date')?.value || fallbackDate;
-  const wkday  = isRec ? (new Date(dateV + 'T12:00:00').getDay() === 0 ? 6 : new Date(dateV + 'T12:00:00').getDay() - 1) : null;
-
-  const data = {
-    start_time:        startTime,
-    end_time:          document.getElementById('bp-end')?.value || null,
-    pax:               parseInt(document.getElementById('bp-pax')?.value) || null,
-    name:              document.getElementById('bp-name')?.value?.trim() || null,
-    note:              document.getElementById('bp-note')?.value?.trim() || null,
-    table_ids:         tableIds,
-    recurring_weekly:  isRec,
-    recurring_weekday: wkday,
-    booking_date:      isRec ? null : dateV,
+  const bookingType = document.querySelector('input[name="bp-type"]:checked')?.value || 'single';
+  const baseData = {
+    start_time: startTime,
+    end_time:   document.getElementById('bp-end')?.value || null,
+    pax:        parseInt(document.getElementById('bp-pax')?.value) || null,
+    name:       document.getElementById('bp-name')?.value?.trim() || null,
+    note:       document.getElementById('bp-note')?.value?.trim() || null,
+    table_ids:  tableIds,
   };
 
   try {
+    if (bookingType === 'multi') {
+      const selectedDates = [...document.querySelectorAll('.bp-day-chip.sel')].map(el => el.dataset.date);
+      if (!selectedDates.length) { showAlert('Velg minst én dato.'); return; }
+      for (const d of selectedDates) {
+        await sbPost('bordplan_bookings', { ...baseData, recurring_weekly: false, recurring_weekday: null, booking_date: d });
+      }
+      closeBpModal();
+      ST._bpBookings = null;
+      ST._bpSelected = [];
+      showAlert(`${selectedDates.length} bookinger lagret.`);
+      renderTab();
+      return;
+    }
+
+    const isRec = bookingType === 'recurring';
+    const dateV = document.getElementById('bp-date')?.value || fallbackDate;
+    const wkday = isRec ? (new Date(dateV + 'T12:00:00').getDay() === 0 ? 6 : new Date(dateV + 'T12:00:00').getDay() - 1) : null;
+    const data  = { ...baseData, recurring_weekly: isRec, recurring_weekday: wkday, booking_date: isRec ? null : dateV };
+
     if (existingId) {
       await sbPatch('bordplan_bookings?id=eq.' + existingId, data);
     } else {
