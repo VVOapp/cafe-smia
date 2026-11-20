@@ -1966,9 +1966,91 @@ async function buildKantineSync() {
   ST._kantineUnsynced = deliveredOrders.filter(o => !syncedMap[o.id]).length;
   renderNav();
 
+  const showLog = !!ST._kantineShowMottak;
+
+  // ── Mottak-logg view ──────────────────────────────────────────
+  if (showLog) {
+    const fmtTs = iso => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleDateString('nb-NO', { day:'2-digit', month:'short', year:'numeric' })
+           + ' ' + d.toLocaleTimeString('nb-NO', { hour:'2-digit', minute:'2-digit' });
+    };
+    const orderRows = deliveredOrders.map(order => {
+      const rec  = order.received || {};
+      const lines = kantineOrderLines(order, kpMap);
+      const receivedAt = order.received_at ? fmtTs(order.received_at) : '—';
+      // Collect unique staff names who registered lines
+      const bySet = new Set();
+      Object.values(rec).forEach(r => { if (r.by) bySet.add(r.by); });
+      (order.extra_items || []).forEach(e => { if (e.by) bySet.add(e.by); });
+      const byList = [...bySet].join(', ') || '—';
+
+      const lineRows = lines.map(l => {
+        const key = l.extra ? null : Object.keys(rec).find(k => {
+          const parts = k.split('_');
+          return parts[0] === String(l.pid) && (parts.length === 1 || l.day !== '');
+        });
+        // For extra items find by pid match
+        let rData = key ? rec[key] : null;
+        if (!rData && l.extra) {
+          rData = (order.extra_items || []).find(e => e.pid === l.pid) || null;
+        }
+        const by   = rData?.by   || '—';
+        const date = rData?.date ? fmtTs(rData.date) : (order.received_at ? fmtTs(order.received_at) : '—');
+        const style = l.rejected ? 'text-decoration:line-through;color:var(--text2);opacity:0.55' : '';
+        const extraTag = l.extra ? ' <span style="font-size:0.72rem;color:#854F0B">(ekstra)</span>' : '';
+        return `<tr style="${style}">
+          <td>${esc(l.name)}${extraTag}${l.day ? ` <span style="font-size:0.75rem;color:var(--text2)">(${esc(l.day)})</span>` : ''}</td>
+          <td style="text-align:right">${l.extra ? '—' : fmtN(l.ordered) + ' ' + esc(l.unit)}</td>
+          <td style="text-align:right">${fmtN(l.received)} ${esc(l.unit)}</td>
+          <td>${esc(by)}</td>
+          <td style="font-size:0.78rem;white-space:nowrap">${date}</td>
+        </tr>`;
+      }).join('');
+
+      return `<div class="card" style="margin-bottom:0.75rem">
+        <div class="card-header">
+          <span class="card-title">Uke ${esc(order.week)}</span>
+          <span style="font-size:0.82rem;color:var(--text2);margin-left:8px">Fullført: ${receivedAt}</span>
+          <div class="spacer"></div>
+          <span style="font-size:0.82rem;color:var(--text2)">👤 ${esc(byList)}</span>
+        </div>
+        <table><thead><tr><th>Produkt</th><th>Bestilt</th><th>Mottatt</th><th>Registrert av</th><th>Tidspunkt</th></tr></thead>
+          <tbody>${lineRows}</tbody>
+        </table>
+      </div>`;
+    }).join('');
+
+    return `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🏢 Importer fra kantine</span>
+        <div class="spacer"></div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+          <span>Admin</span>
+          <span onclick="ST._kantineShowMottak=!ST._kantineShowMottak;renderTab()" style="display:inline-flex;align-items:center;width:40px;height:22px;border-radius:11px;background:#1565c0;padding:2px;cursor:pointer;transition:background 0.2s">
+            <span style="display:block;width:18px;height:18px;border-radius:50%;background:#fff;transform:translateX(18px);transition:transform 0.2s"></span>
+          </span>
+          <span style="color:#1565c0;font-weight:600">Mottak-logg</span>
+        </label>
+      </div>
+      ${orderRows}
+    </div>`;
+  }
+
   return `
   <div class="card">
-    <div class="card-header"><span class="card-title">🏢 Importer fra kantine</span></div>
+    <div class="card-header">
+      <span class="card-title">🏢 Importer fra kantine</span>
+      <div class="spacer"></div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;font-weight:500">
+        <span style="color:var(--text2)">Mottak-logg</span>
+        <span onclick="ST._kantineShowMottak=!ST._kantineShowMottak;renderTab()" style="display:inline-flex;align-items:center;width:40px;height:22px;border-radius:11px;background:#ccc;padding:2px;cursor:pointer;transition:background 0.2s">
+          <span style="display:block;width:18px;height:18px;border-radius:50%;background:#fff;transform:translateX(0);transition:transform 0.2s"></span>
+        </span>
+      </label>
+    </div>
     <div style="font-size:0.82rem;color:var(--text2);margin-bottom:10px">Viser bestillinger som kaféen har registrert som mottatt i Bestillinger-appen. Importen bruker antallet som faktisk ble mottatt.</div>
     ${deliveredOrders.map(order => {
       const lines   = kantineOrderLines(order, kpMap);
