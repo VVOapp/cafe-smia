@@ -451,6 +451,7 @@ function buildOrders(){
       html+='<button class="btn btn-sm btn-primary" onclick="openMottak('+o.id+')">&#x1F4E6; Registrer mottak</button>';
       html+='<button class="btn btn-sm" onclick="openEdit('+o.id+')">Rediger</button>';
       html+='<span style="font-size:12px;color:var(--text3)">'+printedLabel(o)+'</span>';
+      if(isAdmin()&&o.received&&Object.keys(o.received).length>0)html+='<button class="btn btn-sm btn-danger" onclick="requireAdmin(function(){nullstillMottak('+o.id+')})" title="Slett alle registrerte mottakstall så varene kan registreres på nytt">🗑 Nullstill mottak</button>';
     }
     if(o.status==="delivered"){
       html+='<span style="font-size:12px;color:var(--text3)">&#x2713; Mottatt'+(o.received_at?' '+new Date(o.received_at).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}):'')+(o.received_by?' av '+o.received_by:'')+'</span>';
@@ -629,7 +630,7 @@ function buildCanteen(){
     html+='<p class="section-label" style="margin-top:1.5rem">Mottatt</p>';
     html+='<div class="card"><table><thead><tr><th>Bestilling</th><th>Uke</th><th>Mottatt</th><th></th></tr></thead><tbody>';
     history.slice(0,20).forEach(function(o){
-      html+='<tr><td>#'+o.id+'</td><td>'+weekLabel(o.week)+'</td><td>'+(o.received_at?new Date(o.received_at).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}):'')+(o.received_by?' ('+o.received_by+')':'')+(orderHasAvvik(o)?' <span class="badge badge-avvik">avvik</span>':'')+'</td><td style="text-align:right"><button class="btn btn-sm" onclick="viewHistoryOrder('+o.id+')">Vis</button></td></tr>';
+      html+='<tr><td>#'+o.id+'</td><td>'+weekLabel(o.week)+'</td><td>'+(o.received_at?new Date(o.received_at).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}):'')+(o.received_by?' ('+o.received_by+')':'')+(orderHasAvvik(o)?' <span class="badge badge-avvik">avvik</span>':'')+'</td><td style="text-align:right;white-space:nowrap;display:flex;gap:6px;justify-content:flex-end"><button class="btn btn-sm" onclick="viewHistoryOrder('+o.id+')">Vis</button>'+(isAdmin()?'<button class="btn btn-sm" style="color:#c62828" onclick="requireAdmin(function(){reopenOrder('+o.id+')})">↩ Gjenåpne</button>':'')+'</td></tr>';
     });
     html+='</tbody></table></div>';
   }
@@ -1458,6 +1459,15 @@ function reorderRest(){
 async function reopenOrder(id){
   if(!confirm("Gjenåpne mottaket for bestilling #"+id+"?\nRegistrerte antall beholdes, og kan rettes med «Registrer mottak»."))return;
   try{await db.updateOrder(id,{status:"accepted"});await loadAll();showAlert("Bestilling #"+id+" gjenåpnet.");}catch(e){showAlert("Feil: "+e.message,"error");}
+}
+
+async function nullstillMottak(id){
+  if(!confirm("Nullstill alle registrerte mottakstall for bestilling #"+id+"?\n\nAlle antall som er registrert av ansatte slettes, og bestillingen kan registreres på nytt fra scratch.\n\nDette kan ikke angres."))return;
+  try{
+    await db.updateOrder(id,{received:{},extra_items:[],received_at:null,received_by:null,status:"accepted"});
+    await loadAll();
+    showAlert("Mottak nullstilt — bestilling #"+id+" kan nå registreres på nytt.");
+  }catch(e){showAlert("Feil: "+e.message,"error");}
 }
 
 // Canteen prints a new order to hang up in the kitchen; printing counts as "seen"
