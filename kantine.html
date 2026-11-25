@@ -1521,10 +1521,43 @@ async function saveProd(){
   const sort_order=S.products.length;
   if(!name||!unit){showAlert("Fyll inn navn og enhet.","error");return;}
   try{
+    // New price: lock the old price onto past orders first, so their history and faktura don't change
+    let msg="Produkt lagret.";
+    const old=S.editProduct.id?getProd(S.editProduct.id):null;
+    if(old&&Number(old.price||0)!==price){
+      const n=await lockOldPrice(old.id,Number(old.price)||0);
+      if(n>0)msg+=" "+n+" tidligere bestillinger beholder den gamle prisen ("+fmt(Number(old.price)||0)+").";
+    }
     if(S.editProduct.id)await db.updateProduct(S.editProduct.id,{name:name,unit:unit,price:price,note:note});
     else await db.addProduct({name:name,unit:unit,price:price,note:note,sort_order:sort_order});
-    await loadAll();S.modal=null;showAlert("Produkt lagret.");
+    await loadAll();S.modal=null;showAlert(msg);
   }catch(e){showAlert("Feil: "+e.message,"error");}
+}
+// Received orders from before the mottak flow (and lines without a price) are priced at the product's
+// current price. Before a price change, save the old price on those lines so they keep it.
+// Open orders are left alone: lines not yet received get the new price when they are registered.
+async function lockOldPrice(pid,oldPrice){
+  let count=0;
+  for(const o of S.orders){
+    if(o.status!=="delivered")continue;
+    const rec=Object.assign({},o.received||{});
+    let changed=false;
+    orderLines(o).forEach(function(l){
+      if(l.pid!==pid||l.rejected)return;
+      const r=rec[l.key];
+      if(r&&r.price!=null)return;
+      rec[l.key]=r?Object.assign({},r,{price:oldPrice}):{qty:lineReceivedQty(o,l),price:oldPrice,by:"",note:"",no_invoice:false,locked:true};
+      changed=true;
+    });
+    const extras=(o.extra_items||[]).map(function(e){
+      if(e.pid!==pid||e.price!=null)return e;
+      changed=true;return Object.assign({},e,{price:oldPrice});
+    });
+    if(!changed)continue;
+    await db.updateOrder(o.id,{received:rec,extra_items:extras});
+    o.received=rec;o.extra_items=extras;count++;
+  }
+  return count;
 }
 async function deleteProd(id){try{await db.deleteProduct(id);await loadAll();S.modal=null;showAlert("Produkt fjernet.");}catch(e){showAlert("Feil: "+e.message,"error");}}
 

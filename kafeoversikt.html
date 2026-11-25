@@ -2058,8 +2058,9 @@ async function buildKantineSync() {
       const rcpt    = syncedMap[order.id];
       const synced  = rcpt ? rcpt.id : null;
       // Only orders registered in the new mottak flow have price snapshots; older ones would
-      // show false changes whenever a kantine price has changed since import
-      const hasRecv = order.received && Object.keys(order.received).length > 0;
+      // show false changes whenever a kantine price has changed since import.
+      // Lines marked locked only got an old price saved by kantine when a price changed, so they don't count.
+      const hasRecv = order.received && Object.values(order.received).some(r => r && !r.locked);
       const changed = rcpt && hasRecv && Math.abs(Number(rcpt.total_amount || 0) - total) > 0.005;
       const hasAvvik = lines.some(l => !l.rejected && l.received !== l.ordered);
       // Default delivery date: when the café registered it as received
